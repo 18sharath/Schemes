@@ -1,0 +1,416 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { recommendationsAPI } from '../services/api';
+import { 
+  FileText, 
+  Star, 
+  MapPin, 
+  Calendar, 
+  Download, 
+  ExternalLink,
+  Filter,
+  Search,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Target
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+
+const Recommendations = () => {
+  const { user } = useAuth();
+  const [recommendations, setRecommendations] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState(null);
+  const [topK, setTopK] = useState(10);
+  const [filteredRecommendations, setFilteredRecommendations] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+
+  useEffect(() => {
+    loadServiceStatus();
+  }, []);
+
+  useEffect(() => {
+    if (recommendations.length > 0) {
+      filterRecommendations();
+    }
+  }, [recommendations, searchTerm, selectedCategory]);
+
+  const loadServiceStatus = async () => {
+    try {
+      const response = await recommendationsAPI.getServiceStatus();
+      setServiceStatus(response.data);
+    } catch (error) {
+      console.error('Failed to load service status:', error);
+    }
+  };
+
+  const getRecommendations = async () => {
+    if (!user.isProfileComplete) {
+      toast.error('Please complete your profile first to get personalized recommendations.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await recommendationsAPI.getRecommendations(topK);
+      setRecommendations(response.data.recommendations);
+      toast.success(`Found ${response.data.recommendations.length} recommendations!`);
+    } catch (error) {
+      console.error('Failed to get recommendations:', error);
+      toast.error('Failed to get recommendations. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getQuickRecommendations = async () => {
+    setLoading(true);
+    try {
+      const response = await recommendationsAPI.getQuickRecommendations({
+        age: user.profile.age || 25,
+        occupation: user.profile.occupation || 'General',
+        state: user.profile.state || 'India',
+        interests: user.profile.interests || ['general']
+      });
+      setRecommendations(response.data.recommendations);
+      toast.success(`Found ${response.data.recommendations.length} quick recommendations!`);
+    } catch (error) {
+      console.error('Failed to get quick recommendations:', error);
+      toast.error('Failed to get quick recommendations. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterRecommendations = () => {
+    let filtered = recommendations;
+
+    if (searchTerm) {
+      filtered = filtered.filter(rec => 
+        rec.scheme_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        rec.details?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        rec.benefits?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(rec => 
+        rec.schemeCategory?.toLowerCase() === selectedCategory.toLowerCase()
+      );
+    }
+
+    setFilteredRecommendations(filtered);
+  };
+
+  const getScoreColor = (score) => {
+    if (score >= 0.8) return 'text-green-600 bg-green-100';
+    if (score >= 0.6) return 'text-yellow-600 bg-yellow-100';
+    return 'text-red-600 bg-red-100';
+  };
+
+  const getScoreText = (score) => {
+    if (score >= 0.8) return 'Excellent Match';
+    if (score >= 0.6) return 'Good Match';
+    if (score >= 0.4) return 'Fair Match';
+    return 'Low Match';
+  };
+
+  const categories = [
+    'all',
+    ...new Set(recommendations.map(rec => rec.schemeCategory).filter(Boolean))
+  ];
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Scheme Recommendations</h1>
+        <p className="text-gray-300">
+          Get personalized government scheme recommendations based on your profile and preferences.
+        </p>
+      </div>
+
+      {/* Service Status */}
+      {serviceStatus && (
+        <div className="card p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              {serviceStatus.serviceStatus === 'operational' ? (
+                <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+              )}
+              <span className="font-medium text-gray-800">
+                Service Status: {serviceStatus.serviceStatus === 'operational' ? 'Active' : 'Offline'}
+              </span>
+            </div>
+            <div className="text-sm text-gray-600">
+              ML Model: {serviceStatus.modelInfo?.isAvailable ? 'Available' : 'Unavailable'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="grid md:grid-cols-3 gap-4 mb-8">
+        <div className="card p-6">
+          <h3 className="font-semibold text-gray-800 mb-2">Personalized Recommendations</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Get AI-powered recommendations based on your complete profile.
+          </p>
+          <button
+            onClick={getRecommendations}
+            disabled={loading || !user.isProfileComplete}
+            className="btn btn-primary w-full"
+          >
+            {loading ? (
+              <div className="loading"></div>
+            ) : (
+              <>
+                <Target className="w-4 h-4" />
+                Get Recommendations
+              </>
+            )}
+          </button>
+          {!user.isProfileComplete && (
+            <p className="text-xs text-amber-600 mt-2">
+              Complete your profile for personalized recommendations
+            </p>
+          )}
+        </div>
+
+        <div className="card p-6">
+          <h3 className="font-semibold text-gray-800 mb-2">Quick Recommendations</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Get instant recommendations with minimal profile information.
+          </p>
+          <button
+            onClick={getQuickRecommendations}
+            disabled={loading}
+            className="btn btn-secondary w-full"
+          >
+            {loading ? (
+              <div className="loading"></div>
+            ) : (
+              <>
+                <Clock className="w-4 h-4" />
+                Quick Search
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="card p-6">
+          <h3 className="font-semibold text-gray-800 mb-2">Settings</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Customize the number of recommendations you want to see.
+          </p>
+          <select
+            value={topK}
+            onChange={(e) => setTopK(parseInt(e.target.value))}
+            className="form-select w-full"
+          >
+            <option value={5}>5 recommendations</option>
+            <option value={10}>10 recommendations</option>
+            <option value={15}>15 recommendations</option>
+            <option value={20}>20 recommendations</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Filters */}
+      {recommendations.length > 0 && (
+        <div className="card p-6 mb-8">
+          <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
+            <Filter className="w-5 h-5 mr-2" />
+            Filters & Search
+          </h3>
+          
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Search Schemes</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="form-input pl-10"
+                  placeholder="Search by name, details, or benefits..."
+                />
+              </div>
+            </div>
+            
+            <div>
+              <label className="form-label">Category</label>
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="form-select"
+              >
+                {categories.map(category => (
+                  <option key={category} value={category}>
+                    {category === 'all' ? 'All Categories' : category}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Results */}
+      {loading && (
+        <div className="text-center py-12">
+          <div className="loading mx-auto mb-4"></div>
+          <p className="text-gray-600">Analyzing your profile and generating recommendations...</p>
+        </div>
+      )}
+
+      {!loading && filteredRecommendations.length > 0 && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-800">
+              {filteredRecommendations.length} Recommendation{filteredRecommendations.length !== 1 ? 's' : ''} Found
+            </h2>
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedCategory('all');
+              }}
+              className="btn btn-outline btn-sm"
+            >
+              <RefreshCw className="w-4 h-4 mr-1" />
+              Clear Filters
+            </button>
+          </div>
+
+          {filteredRecommendations.map((rec, index) => (
+            <div key={index} className="card p-6 hover:shadow-lg transition-shadow">
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex-1">
+                  <h3 className="text-xl font-semibold text-gray-800 mb-2">
+                    {rec.scheme_name}
+                  </h3>
+                  <div className="flex items-center space-x-4 text-sm text-gray-600 mb-3">
+                    {rec.level && (
+                      <span className="flex items-center">
+                        <MapPin className="w-4 h-4 mr-1" />
+                        {rec.level}
+                      </span>
+                    )}
+                    {rec.schemeCategory && (
+                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                        {rec.schemeCategory}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                {rec.score_hybrid && (
+                  <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreColor(rec.score_hybrid)}`}>
+                    {getScoreText(rec.score_hybrid)}
+                  </div>
+                )}
+              </div>
+
+              {rec.details && (
+                <div className="mb-4">
+                  <h4 className="font-medium text-gray-800 mb-2">Description</h4>
+                  <p className="text-gray-600 text-sm leading-relaxed">
+                    {rec.details.length > 200 ? `${rec.details.substring(0, 200)}...` : rec.details}
+                  </p>
+                </div>
+              )}
+
+              {rec.benefits && (
+                <div className="mb-4">
+                  <h4 className="font-medium text-gray-800 mb-2">Benefits</h4>
+                  <p className="text-gray-600 text-sm leading-relaxed">
+                    {rec.benefits.length > 200 ? `${rec.benefits.substring(0, 200)}...` : rec.benefits}
+                  </p>
+                </div>
+              )}
+
+              {rec.eligibility && (
+                <div className="mb-4">
+                  <h4 className="font-medium text-gray-800 mb-2">Eligibility</h4>
+                  <p className="text-gray-600 text-sm leading-relaxed">
+                    {rec.eligibility.length > 200 ? `${rec.eligibility.substring(0, 200)}...` : rec.eligibility}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 mb-4">
+                {rec.tags && rec.tags.split(',').map((tag, tagIndex) => (
+                  <span
+                    key={tagIndex}
+                    className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs"
+                  >
+                    {tag.trim()}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                <div className="flex space-x-4">
+                  {rec.application && (
+                    <button className="btn btn-outline btn-sm">
+                      <ExternalLink className="w-4 h-4 mr-1" />
+                      Application Process
+                    </button>
+                  )}
+                  {rec.documents && (
+                    <button className="btn btn-outline btn-sm">
+                      <Download className="w-4 h-4 mr-1" />
+                      Required Documents
+                    </button>
+                  )}
+                </div>
+                
+                <div className="flex items-center space-x-2 text-sm text-gray-500">
+                  <Star className="w-4 h-4" />
+                  <span>Match Score: {rec.score_hybrid ? (rec.score_hybrid * 100).toFixed(1) : 'N/A'}%</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && recommendations.length === 0 && (
+        <div className="text-center py-12">
+          <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-800 mb-2">No Recommendations Yet</h3>
+          <p className="text-gray-600 mb-6">
+            Click the buttons above to get personalized scheme recommendations.
+          </p>
+        </div>
+      )}
+
+      {!loading && recommendations.length > 0 && filteredRecommendations.length === 0 && (
+        <div className="text-center py-12">
+          <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-800 mb-2">No Results Found</h3>
+          <p className="text-gray-600 mb-6">
+            Try adjusting your search terms or filters to find more schemes.
+          </p>
+          <button
+            onClick={() => {
+              setSearchTerm('');
+              setSelectedCategory('all');
+            }}
+            className="btn btn-primary"
+          >
+            Clear Filters
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Recommendations;

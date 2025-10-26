@@ -1,0 +1,9 @@
+{
+  "age": 45,
+  "income": 200000,
+  "caste_group": "OBC",
+  "occupation": "farmer",
+  "gender": "male",
+  "state": "karnataka",
+  "interests": ["agriculture", "loan", "subsidy"]
+}
