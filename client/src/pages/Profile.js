@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { profileAPI } from '../services/api';
 import { User, Save, CheckCircle, AlertCircle, MapPin, Briefcase, DollarSign, Users, Heart } from 'lucide-react';
@@ -6,6 +7,8 @@ import toast from 'react-hot-toast';
 
 const Profile = () => {
   const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [formData, setFormData] = useState({
     age: '',
     income: '',
@@ -73,6 +76,12 @@ const Profile = () => {
       updateUser({ ...user, profile: response.data.profile });
       toast.success('Profile updated successfully!');
       loadProfileStatus();
+      // Navigate back to the previous page if possible, otherwise to dashboard
+      if (window.history.length > 1) {
+        navigate(-1);
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     } catch (error) {
       console.error('Failed to update profile:', error);
       toast.error('Failed to update profile');
@@ -120,16 +129,16 @@ const Profile = () => {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Your Profile</h1>
-        <p className="text-gray-600">Complete your profile to get personalized scheme recommendations.</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Your Profile</h1>
+        <p className="text-gray-600 dark:text-gray-300">Complete your profile to get personalized scheme recommendations.</p>
       </div>
 
       {/* Profile Completion Status */}
       {profileStatus && (
-        <div className="card p-6 mb-8">
+        <div className="card p-6 mb-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">Profile Completion</h2>
-            <span className="text-2xl font-bold text-blue-600">{completionPercentage}%</span>
+            <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">Profile Completion</h2>
+            <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{completionPercentage}%</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
             <div 
@@ -154,8 +163,8 @@ const Profile = () => {
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Basic Information */}
-        <div className="card p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+        <div className="card p-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-6 flex items-center">
             <User className="w-5 h-5 mr-2" />
             Basic Information
           </h2>
@@ -168,8 +177,8 @@ const Profile = () => {
                 name="age"
                 value={formData.age}
                 onChange={handleChange}
-                className="form-input"
-                placeholder="Enter your age"
+                className="form-input bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
+                placeholder={formData.age ? "" : "Enter your age"}
                 min="18"
                 max="100"
               />
@@ -181,7 +190,7 @@ const Profile = () => {
                 name="gender"
                 value={formData.gender}
                 onChange={handleChange}
-                className="form-select"
+                className="form-select bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
               >
                 <option value="">Select Gender</option>
                 <option value="male">Male</option>
@@ -193,14 +202,16 @@ const Profile = () => {
             <div>
               <label className="form-label">Annual Income (₹)</label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <DollarSign className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors pointer-events-none z-10 ${
+                  formData.income ? 'text-gray-600 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'
+                }`} />
                 <input
                   type="number"
                   name="income"
                   value={formData.income}
                   onChange={handleChange}
-                  className="form-input pl-10"
-                  placeholder="Enter your annual income"
+                  className="form-input pl-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
+                  placeholder={formData.income ? "" : "Enter your annual income"}
                   min="0"
                 />
               </div>
@@ -212,7 +223,7 @@ const Profile = () => {
                 name="caste_group"
                 value={formData.caste_group}
                 onChange={handleChange}
-                className="form-select"
+                className="form-select bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
               >
                 <option value="">Select Caste Group</option>
                 <option value="General">General</option>
@@ -227,14 +238,16 @@ const Profile = () => {
             <div>
               <label className="form-label">Occupation</label>
               <div className="relative">
-                <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Briefcase className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors pointer-events-none z-10 ${
+                  formData.occupation ? 'text-gray-600 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'
+                }`} />
                 <input
                   type="text"
                   name="occupation"
                   value={formData.occupation}
                   onChange={handleChange}
-                  className="form-input pl-10"
-                  placeholder="Enter your occupation"
+                  className="form-input pl-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
+                  placeholder={formData.occupation ? "" : "Enter your occupation"}
                 />
               </div>
             </div>
@@ -242,14 +255,16 @@ const Profile = () => {
             <div>
               <label className="form-label">State</label>
               <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <MapPin className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors pointer-events-none z-10 ${
+                  formData.state ? 'text-gray-600 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'
+                }`} />
                 <input
                   type="text"
                   name="state"
                   value={formData.state}
                   onChange={handleChange}
-                  className="form-input pl-10"
-                  placeholder="Enter your state"
+                  className="form-input pl-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
+                  placeholder={formData.state ? "" : "Enter your state"}
                 />
               </div>
             </div>
@@ -257,8 +272,8 @@ const Profile = () => {
         </div>
 
         {/* Interests */}
-        <div className="card p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+        <div className="card p-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-6 flex items-center">
             <Heart className="w-5 h-5 mr-2" />
             Interests & Preferences
           </h2>
@@ -269,7 +284,7 @@ const Profile = () => {
                 type="text"
                 value={newInterest}
                 onChange={(e) => setNewInterest(e.target.value)}
-                className="form-input flex-1"
+                className="form-input flex-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="Add an interest (e.g., agriculture, education, health)"
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addInterest())}
               />
@@ -305,8 +320,8 @@ const Profile = () => {
         </div>
 
         {/* Previous Applications */}
-        <div className="card p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+        <div className="card p-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-6 flex items-center">
             <Users className="w-5 h-5 mr-2" />
             Previous Applications
           </h2>
@@ -317,7 +332,7 @@ const Profile = () => {
                 type="text"
                 value={newApplication}
                 onChange={(e) => setNewApplication(e.target.value)}
-                className="form-input flex-1"
+                className="form-input flex-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="Add a previous application (e.g., PM Kisan, Ayushman Bharat)"
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addApplication())}
               />
