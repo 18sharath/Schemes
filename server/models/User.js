@@ -104,14 +104,15 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 // Check if profile is complete
 userSchema.methods.isProfileComplete = function() {
   const profile = this.profile;
+  // Interests are optional for profile completion
   return !!(
     profile.age &&
     profile.income !== undefined &&
     profile.caste_group &&
     profile.occupation &&
     profile.gender &&
-    profile.state &&
-    profile.interests && profile.interests.length > 0
+    profile.state
+    // Note: interests is optional - removed from required fields
   );
 };
 

@@ -25,6 +25,31 @@ code {
     monospace;
 }
 
+/* Select dropdown styling for better visibility */
+select {
+  color: #111827 !important;
+  background-color: white !important;
+}
+
+select.dark\:bg-gray-700 {
+  color: #f3f4f6 !important;
+  background-color: #374151 !important;
+}
+
+select option {
+  color: #111827 !important;
+  background-color: white !important;
+}
+
+select.dark\:bg-gray-700 option {
+  color: #f3f4f6 !important;
+  background-color: #374151 !important;
+}
+
+select option:disabled {
+  color: #6B7280 !important;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
@@ -113,7 +138,6 @@ code {
 }
 
 .card {
-  background: white;
   border-radius: 1rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   overflow: hidden;
@@ -247,29 +271,5 @@ code {
   }
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  body {
-    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-    color: #f1f5f9;
-  }
-  
-  .card {
-    background: #1e293b;
-    color: #f1f5f9;
-  }
-  
-  .form-input,
-  .form-select,
-  .form-textarea {
-    background: #334155;
-    border-color: #475569;
-    color: #f1f5f9;
-  }
-  
-  .form-input:focus,
-  .form-select:focus,
-  .form-textarea:focus {
-    border-color: #667eea;
-  }
-}
+/* Dark mode support - Note: Using Tailwind's dark mode classes instead of media query */
+/* This allows manual dark mode toggle to work properly */

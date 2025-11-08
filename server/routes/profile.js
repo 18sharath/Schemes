@@ -54,6 +54,20 @@ router.put('/', [
       previous_applications
     } = req.body;
 
+    // Debug logging
+    console.log('Profile update received:', {
+      age,
+      income,
+      caste_group,
+      occupation,
+      gender,
+      state,
+      interests,
+      interestsType: Array.isArray(interests) ? 'array' : typeof interests,
+      interestsLength: Array.isArray(interests) ? interests.length : 'N/A',
+      previous_applications
+    });
+
     // Update profile fields
     const profileUpdate = {};
     if (age !== undefined) profileUpdate['profile.age'] = age;
@@ -62,8 +76,13 @@ router.put('/', [
     if (occupation !== undefined) profileUpdate['profile.occupation'] = occupation;
     if (gender !== undefined) profileUpdate['profile.gender'] = gender;
     if (state !== undefined) profileUpdate['profile.state'] = state;
-    if (interests !== undefined) profileUpdate['profile.interests'] = interests;
-    if (previous_applications !== undefined) profileUpdate['profile.previous_applications'] = previous_applications;
+    // Always save interests, even if empty array (to clear previous values)
+    if (interests !== undefined) {
+      profileUpdate['profile.interests'] = Array.isArray(interests) ? interests : [];
+    }
+    if (previous_applications !== undefined) {
+      profileUpdate['profile.previous_applications'] = Array.isArray(previous_applications) ? previous_applications : [];
+    }
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
@@ -117,23 +136,41 @@ router.post('/complete', auth, async (req, res) => {
 router.get('/status', auth, async (req, res) => {
   try {
     const profile = req.user.profile;
+    // Debug logging
+    console.log('Profile status check:', {
+      age: profile.age,
+      income: profile.income,
+      caste_group: profile.caste_group,
+      occupation: profile.occupation,
+      gender: profile.gender,
+      state: profile.state,
+      interests: profile.interests,
+      interestsLength: profile.interests ? profile.interests.length : 0
+    });
+    
     const status = {
       isComplete: req.user.isProfileComplete(),
       missingFields: [],
       completionPercentage: 0
     };
 
+    // Required fields (interests is optional)
     const requiredFields = [
       { field: 'age', value: profile.age },
       { field: 'income', value: profile.income },
       { field: 'caste_group', value: profile.caste_group },
       { field: 'occupation', value: profile.occupation },
       { field: 'gender', value: profile.gender },
-      { field: 'state', value: profile.state },
-      { field: 'interests', value: profile.interests && profile.interests.length > 0 }
+      { field: 'state', value: profile.state }
+      // Note: interests is optional - not included in required fields
     ];
 
-    const completedFields = requiredFields.filter(field => field.value !== undefined && field.value !== null && field.value !== '');
+    // Check completion: all required fields must have values
+    const completedFields = requiredFields.filter(field => {
+      // Check if value exists and is not empty
+      return field.value !== undefined && field.value !== null && field.value !== '';
+    });
+    
     status.completionPercentage = Math.round((completedFields.length / requiredFields.length) * 100);
     status.missingFields = requiredFields
       .filter(field => !field.value || (Array.isArray(field.value) && field.value.length === 0))

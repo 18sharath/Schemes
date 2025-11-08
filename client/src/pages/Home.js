@@ -55,6 +55,10 @@ const Home = () => {
             interests, and eligibility. Make informed decisions with our AI-powered platform.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link to="/form" className="btn btn-lg bg-green-500 text-white hover:bg-green-600">
+              Find Schemes Now
+              <ArrowRight className="w-5 h-5" />
+            </Link>
             {isAuthenticated ? (
               <Link to="/dashboard" className="btn btn-lg bg-white text-blue-600 hover:bg-gray-100">
                 Go to Dashboard
