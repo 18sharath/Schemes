@@ -8,6 +8,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const recommendationRoutes = require('./routes/recommendations');
+const bookmarkRoutes = require('./routes/bookmarks');
 const { connectDB } = require('./config/database');
 
 const app = express();
@@ -41,10 +42,20 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Connect to database
 connectDB();
 
+// Schedule background jobs after database connection
+// Wait a bit for DB to be ready
+setTimeout(() => {
+  if (process.env.ENABLE_BOOKMARK_REMINDERS !== 'false') {
+    const bookmarkReminderJob = require('./jobs/bookmarkReminderJob');
+    bookmarkReminderJob.scheduleBookmarkReminders();
+  }
+}, 2000);
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/recommendations', recommendationRoutes);
+app.use('/api/bookmarks', bookmarkRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

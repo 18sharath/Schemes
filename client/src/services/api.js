@@ -74,6 +74,19 @@ export const recommendationsAPI = {
   getServiceStatus: () => api.get('/recommendations/status'),
 };
 
+// Bookmarks API
+export const bookmarksAPI = {
+  getBookmarks: () => api.get('/bookmarks'),
+  
+  addBookmark: (scheme) => api.post('/bookmarks', { scheme }),
+  
+  removeBookmark: (schemeName) => api.delete(`/bookmarks/${encodeURIComponent(schemeName)}`),
+  
+  checkBookmark: (schemeName) => api.get(`/bookmarks/check/${encodeURIComponent(schemeName)}`),
+  
+  testReminder: () => api.post('/bookmarks/test-reminder'),
+};
+
 // Health check
 export const healthAPI = {
   check: () => api.get('/health'),

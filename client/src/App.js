@@ -13,6 +13,7 @@ import Profile from './pages/Profile';
 import Recommendations from './pages/Recommendations';
 import Dashboard from './pages/Dashboard';
 import SchemeForm from './pages/SchemeForm';
+import Bookmarks from './pages/Bookmarks';
 import LoadingSpinner from './components/LoadingSpinner';
 
 function AppContent() {
@@ -52,6 +53,14 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <Recommendations />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/bookmarks" 
+            element={
+              <ProtectedRoute>
+                <Bookmarks />
               </ProtectedRoute>
             } 
           />

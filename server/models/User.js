@@ -78,7 +78,27 @@ const userSchema = new mongoose.Schema({
   },
   lastLogin: {
     type: Date
-  }
+  },
+  bookmarks: [{
+    scheme_name: String,
+    slug: String,
+    level: String,
+    schemeCategory: String,
+    tags: String,
+    details: String,
+    benefits: String,
+    eligibility: String,
+    application: String,
+    documents: String,
+    score_hybrid: Number,
+    score_content: Number,
+    score_eligibility: Number,
+    score_popularity: Number,
+    bookmarkedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }]
 }, {
   timestamps: true
 });

@@ -47,6 +47,19 @@ const Profile = () => {
       const response = await profileAPI.getProfile();
       const profile = response.data.profile;
       
+      // Ensure interests and previous_applications are arrays
+      const interests = Array.isArray(profile.interests) ? profile.interests : (profile.interests ? [profile.interests] : []);
+      const previous_applications = Array.isArray(profile.previous_applications) 
+        ? profile.previous_applications 
+        : (profile.previous_applications ? [profile.previous_applications] : []);
+      
+      console.log('Loaded profile:', {
+        interests,
+        interestsLength: interests.length,
+        previous_applications,
+        previous_applicationsLength: previous_applications.length
+      });
+      
       setFormData({
         gender: profile.gender || '',
         age: profile.age || '',
@@ -54,8 +67,8 @@ const Profile = () => {
         caste_group: profile.caste_group || '',
         occupation: profile.occupation || '',
         income: profile.income || '',
-        interests: profile.interests || [],
-        previous_applications: profile.previous_applications || []
+        interests: interests,
+        previous_applications: previous_applications
       });
     } catch (error) {
       console.error('Failed to load profile:', error);
@@ -136,15 +149,28 @@ const Profile = () => {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      // Debug: Log what we're sending
-      console.log('Submitting profile data:', {
+      // Ensure interests and previous_applications are always arrays
+      const dataToSubmit = {
         ...formData,
-        interestsCount: formData.interests?.length || 0,
-        interests: formData.interests
+        interests: Array.isArray(formData.interests) ? formData.interests : [],
+        previous_applications: Array.isArray(formData.previous_applications) ? formData.previous_applications : []
+      };
+      
+      // Debug: Log what we're sending
+      console.log('=== Submitting profile data ===');
+      console.log('Form data state:', formData);
+      console.log('Data to submit:', dataToSubmit);
+      console.log('Interests details:', {
+        interests: dataToSubmit.interests,
+        interestsType: typeof dataToSubmit.interests,
+        isArray: Array.isArray(dataToSubmit.interests),
+        interestsLength: dataToSubmit.interests.length,
+        interestsJSON: JSON.stringify(dataToSubmit.interests)
       });
       
-      const response = await profileAPI.updateProfile(formData);
+      const response = await profileAPI.updateProfile(dataToSubmit);
       console.log('Profile update response:', response.data);
+      console.log('Response interests:', response.data.profile?.interests);
       
       // Reload user data to get updated profile status
       await loadUser();
@@ -156,43 +182,73 @@ const Profile = () => {
       }, 1000);
     } catch (error) {
       console.error('Failed to update profile:', error);
-      toast.error('Failed to update profile');
+      console.error('Error response:', error.response?.data);
+      toast.error(error.response?.data?.message || 'Failed to update profile');
     } finally {
       setLoading(false);
     }
   };
 
   const addInterest = () => {
-    if (newInterest.trim() && !formData.interests.includes(newInterest.trim())) {
-      setFormData({
-        ...formData,
-        interests: [...formData.interests, newInterest.trim()]
+    const trimmedInterest = newInterest.trim();
+    if (trimmedInterest) {
+      // Use functional update to ensure we have the latest state
+      setFormData(prev => {
+        const currentInterests = Array.isArray(prev.interests) ? prev.interests : [];
+        if (!currentInterests.includes(trimmedInterest)) {
+          const updatedInterests = [...currentInterests, trimmedInterest];
+          console.log('Adding interest:', trimmedInterest, 'New interests array:', updatedInterests);
+          return {
+            ...prev,
+            interests: updatedInterests
+          };
+        }
+        return prev;
       });
       setNewInterest('');
+    } else {
+      toast.error('Please enter a valid interest');
     }
   };
 
   const removeInterest = (interest) => {
-    setFormData({
-      ...formData,
-      interests: formData.interests.filter(i => i !== interest)
+    setFormData(prev => {
+      const currentInterests = Array.isArray(prev.interests) ? prev.interests : [];
+      const updatedInterests = currentInterests.filter(i => i !== interest);
+      console.log('Removing interest:', interest, 'Remaining interests:', updatedInterests);
+      return {
+        ...prev,
+        interests: updatedInterests
+      };
     });
   };
 
   const addApplication = () => {
-    if (newApplication.trim() && !formData.previous_applications.includes(newApplication.trim())) {
-      setFormData({
-        ...formData,
-        previous_applications: [...formData.previous_applications, newApplication.trim()]
+    const trimmedApplication = newApplication.trim();
+    if (trimmedApplication) {
+      setFormData(prev => {
+        const currentApplications = Array.isArray(prev.previous_applications) ? prev.previous_applications : [];
+        if (!currentApplications.includes(trimmedApplication)) {
+          return {
+            ...prev,
+            previous_applications: [...currentApplications, trimmedApplication]
+          };
+        }
+        return prev;
       });
       setNewApplication('');
+    } else {
+      toast.error('Please enter a valid application name');
     }
   };
 
   const removeApplication = (application) => {
-    setFormData({
-      ...formData,
-      previous_applications: formData.previous_applications.filter(a => a !== application)
+    setFormData(prev => {
+      const currentApplications = Array.isArray(prev.previous_applications) ? prev.previous_applications : [];
+      return {
+        ...prev,
+        previous_applications: currentApplications.filter(a => a !== application)
+      };
     });
   };
 

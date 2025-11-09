@@ -54,18 +54,16 @@ router.put('/', [
       previous_applications
     } = req.body;
 
-    // Debug logging
-    console.log('Profile update received:', {
-      age,
-      income,
-      caste_group,
-      occupation,
-      gender,
-      state,
+    // Debug logging - log entire request body
+    console.log('=== Profile update received ===');
+    console.log('Full request body:', JSON.stringify(req.body, null, 2));
+    console.log('Interests details:', {
       interests,
-      interestsType: Array.isArray(interests) ? 'array' : typeof interests,
+      hasInterests: req.body.hasOwnProperty('interests'),
+      interestsType: typeof interests,
+      isArray: Array.isArray(interests),
       interestsLength: Array.isArray(interests) ? interests.length : 'N/A',
-      previous_applications
+      interestsValue: JSON.stringify(interests)
     });
 
     // Update profile fields
@@ -76,14 +74,39 @@ router.put('/', [
     if (occupation !== undefined) profileUpdate['profile.occupation'] = occupation;
     if (gender !== undefined) profileUpdate['profile.gender'] = gender;
     if (state !== undefined) profileUpdate['profile.state'] = state;
-    // Always save interests, even if empty array (to clear previous values)
-    if (interests !== undefined) {
-      profileUpdate['profile.interests'] = Array.isArray(interests) ? interests : [];
+    
+    // Always save interests - explicitly handle array
+    // Check if interests key exists in request body (even if empty array)
+    if (req.body.hasOwnProperty('interests')) {
+      if (Array.isArray(interests)) {
+        // Filter out empty strings and trim
+        profileUpdate['profile.interests'] = interests
+          .map(i => String(i).trim())
+          .filter(i => i.length > 0);
+      } else if (interests === null || interests === undefined) {
+        profileUpdate['profile.interests'] = [];
+      } else {
+        // If it's not an array, try to convert it
+        profileUpdate['profile.interests'] = [String(interests).trim()].filter(i => i.length > 0);
+      }
+      console.log('Setting interests:', profileUpdate['profile.interests']);
     }
-    if (previous_applications !== undefined) {
-      profileUpdate['profile.previous_applications'] = Array.isArray(previous_applications) ? previous_applications : [];
+    
+    // Always save previous_applications
+    if (req.body.hasOwnProperty('previous_applications')) {
+      if (Array.isArray(previous_applications)) {
+        profileUpdate['profile.previous_applications'] = previous_applications
+          .map(a => String(a).trim())
+          .filter(a => a.length > 0);
+      } else if (previous_applications === null || previous_applications === undefined) {
+        profileUpdate['profile.previous_applications'] = [];
+      } else {
+        profileUpdate['profile.previous_applications'] = [String(previous_applications).trim()].filter(a => a.length > 0);
+      }
     }
 
+    console.log('Profile update object:', JSON.stringify(profileUpdate, null, 2));
+    
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { $set: profileUpdate },
@@ -93,6 +116,11 @@ router.put('/', [
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    console.log('Profile after update:', {
+      interests: user.profile.interests,
+      interestsLength: user.profile.interests ? user.profile.interests.length : 0
+    });
 
     res.json({
       message: 'Profile updated successfully',

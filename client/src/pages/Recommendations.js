@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocation } from 'react-router-dom';
-import { recommendationsAPI, profileAPI } from '../services/api';
+import { recommendationsAPI, profileAPI, bookmarksAPI } from '../services/api';
 import { 
   FileText, 
   Star, 
@@ -18,7 +18,8 @@ import {
   Target,
   X,
   FileCheck,
-  ClipboardList
+  ClipboardList,
+  Heart
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -41,16 +42,96 @@ const Recommendations = () => {
   const [eligibilityQuestions, setEligibilityQuestions] = useState([]);
   const [eligibilityAnswers, setEligibilityAnswers] = useState({});
   const [isEligible, setIsEligible] = useState(null);
+  const [bookmarkedSchemes, setBookmarkedSchemes] = useState(new Set());
 
+  // Get storage key for recommendations based on user ID
+  const getStorageKey = () => {
+    const userId = user?.id || user?._id || 'anonymous';
+    return `recommendations_${userId}`;
+  };
+
+  // Load recommendations from localStorage
+  const loadRecommendationsFromStorage = () => {
+    try {
+      const storageKey = getStorageKey();
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setRecommendations(parsed);
+          console.log('Loaded recommendations from storage:', parsed.length);
+          return true;
+        }
+      }
+    } catch (error) {
+      console.error('Error loading recommendations from storage:', error);
+    }
+    return false;
+  };
+
+  // Save recommendations to localStorage
+  const saveRecommendationsToStorage = (recs) => {
+    try {
+      const storageKey = getStorageKey();
+      const timestampKey = `recommendations_timestamp_${user?.id || user?._id || 'anonymous'}`;
+      localStorage.setItem(storageKey, JSON.stringify(recs));
+      localStorage.setItem(timestampKey, new Date().toISOString());
+      console.log('Saved recommendations to storage:', recs.length);
+    } catch (error) {
+      console.error('Error saving recommendations to storage:', error);
+    }
+  };
+
+  // Clear recommendations from storage
+  const clearRecommendationsFromStorage = () => {
+    try {
+      const storageKey = getStorageKey();
+      localStorage.removeItem(storageKey);
+      console.log('Cleared recommendations from storage');
+    } catch (error) {
+      console.error('Error clearing recommendations from storage:', error);
+    }
+  };
+
+  // Load recommendations when component mounts or user changes
   useEffect(() => {
     loadServiceStatus();
     loadProfileStatus();
-    // Check if recommendations were passed from form
-    if (location.state?.recommendations) {
-      setRecommendations(location.state.recommendations);
-      toast.success(`Found ${location.state.recommendations.length} recommendations!`);
+    if (user) {
+      loadBookmarkedSchemes();
     }
-  }, [location.state, user]);
+  }, [user]);
+
+  // Load bookmarked schemes
+  const loadBookmarkedSchemes = async () => {
+    if (!user) return;
+    try {
+      const response = await bookmarksAPI.getBookmarks();
+      const bookmarks = response.data.bookmarks || [];
+      setBookmarkedSchemes(new Set(bookmarks.map(b => b.scheme_name)));
+    } catch (error) {
+      console.error('Failed to load bookmarked schemes:', error);
+    }
+  };
+
+  // Handle recommendations loading - separate effect for user-dependent operations
+  useEffect(() => {
+    if (!user) return; // Wait for user to be loaded
+    
+    // Priority 1: Check if recommendations were passed from form (new recommendations)
+    if (location.state?.recommendations) {
+      const newRecs = location.state.recommendations;
+      setRecommendations(newRecs);
+      saveRecommendationsToStorage(newRecs);
+      toast.success(`Found ${newRecs.length} recommendations!`);
+    } else {
+      // Priority 2: Load from localStorage if no new recommendations
+      const loaded = loadRecommendationsFromStorage();
+      if (loaded) {
+        toast.success('Loaded your saved recommendations');
+      }
+    }
+  }, [location.state, user?.id || user?._id]);
 
   // Reload profile status when navigating to this page
   useEffect(() => {
@@ -126,8 +207,11 @@ const Recommendations = () => {
     setLoadingPersonalized(true);
     try {
       const response = await recommendationsAPI.getRecommendations(topK);
-      setRecommendations(response.data.recommendations);
-      toast.success(`Found ${response.data.recommendations.length} recommendations!`);
+      const newRecs = response.data.recommendations;
+      setRecommendations(newRecs);
+      // Save to localStorage for persistence
+      saveRecommendationsToStorage(newRecs);
+      toast.success(`Found ${newRecs.length} recommendations!`);
     } catch (error) {
       console.error('Failed to get recommendations:', error);
       toast.error('Failed to get recommendations. Please try again.');
@@ -139,17 +223,32 @@ const Recommendations = () => {
   const getQuickRecommendations = async () => {
     setLoadingQuick(true);
     try {
-      const response = await recommendationsAPI.getQuickRecommendations({
-        age: user.profile.age || 25,
-        occupation: user.profile.occupation || 'General',
-        state: user.profile.state || 'India',
-        interests: user.profile.interests || ['general']
-      });
-      setRecommendations(response.data.recommendations);
-      toast.success(`Found ${response.data.recommendations.length} quick recommendations!`);
+      // Prepare quick recommendation data - optimized, only include defined values
+      const quickData = {};
+      if (user?.profile?.age) quickData.age = parseInt(user.profile.age);
+      if (user?.profile?.occupation) quickData.occupation = user.profile.occupation;
+      if (user?.profile?.state) quickData.state = user.profile.state;
+      if (Array.isArray(user?.profile?.interests) && user.profile.interests.length > 0) {
+        quickData.interests = user.profile.interests;
+      }
+
+      const response = await recommendationsAPI.getQuickRecommendations(quickData);
+      const newRecs = response.data.recommendations;
+      
+      if (!newRecs || newRecs.length === 0) {
+        toast.error('No recommendations found. Please try again with different criteria.');
+        return;
+      }
+      
+      setRecommendations(newRecs);
+      saveRecommendationsToStorage(newRecs);
+      toast.success(`Found ${newRecs.length} quick recommendations!`);
     } catch (error) {
-      console.error('Failed to get quick recommendations:', error);
-      toast.error('Failed to get quick recommendations. Please try again.');
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.errors?.[0]?.msg ||
+                          error.message ||
+                          'Failed to get quick recommendations. Please try again.';
+      toast.error(errorMessage);
     } finally {
       setLoadingQuick(false);
     }
@@ -348,6 +447,41 @@ const Recommendations = () => {
     setIsEligible(null);
   };
 
+  // Handle redirect to official website or Google search
+  const handleVisitOfficialPage = (scheme) => {
+    if (!scheme) return;
+
+    // Check for various possible URL field names
+    const url = scheme.url || 
+                scheme.official_url || 
+                scheme.website || 
+                scheme.official_website || 
+                scheme.link || 
+                scheme.official_link ||
+                scheme.portal_url ||
+                scheme.application_url;
+
+    if (url) {
+      // Validate URL format
+      let finalUrl = url.trim();
+      
+      // Add http:// if no protocol is specified
+      if (!finalUrl.match(/^https?:\/\//i)) {
+        finalUrl = 'https://' + finalUrl;
+      }
+      
+      // Open in new tab
+      window.open(finalUrl, '_blank', 'noopener,noreferrer');
+      toast.success('Opening official website...');
+    } else {
+      // If no URL found, redirect to Google search
+      const searchQuery = encodeURIComponent(`${scheme.scheme_name} ${scheme.level || ''} government scheme official website`.trim());
+      const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`;
+      window.open(googleSearchUrl, '_blank', 'noopener,noreferrer');
+      toast.success('Searching for official website...');
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto">
       {/* Header */}
@@ -497,20 +631,36 @@ const Recommendations = () => {
 
       {!loadingPersonalized && !loadingQuick && filteredRecommendations.length > 0 && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">
               {filteredRecommendations.length} Recommendation{filteredRecommendations.length !== 1 ? 's' : ''} Found
             </h2>
-            <button
-              onClick={() => {
-                setSearchTerm('');
-                setSelectedCategory('all');
-              }}
-              className="btn btn-outline btn-sm"
-            >
-              <RefreshCw className="w-4 h-4 mr-1" />
-              Clear Filters
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setSelectedCategory('all');
+                }}
+                className="btn btn-outline btn-sm"
+              >
+                <RefreshCw className="w-4 h-4 mr-1" />
+                Clear Filters
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm('Are you sure you want to clear all saved recommendations? This action cannot be undone.')) {
+                    setRecommendations([]);
+                    clearRecommendationsFromStorage();
+                    toast.success('Recommendations cleared');
+                  }
+                }}
+                className="btn btn-outline btn-sm text-red-600 hover:text-red-700 border-red-300 hover:border-red-400"
+                title="Clear all saved recommendations"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Clear All
+              </button>
+            </div>
           </div>
 
           {filteredRecommendations.map((rec, index) => (
@@ -582,10 +732,48 @@ const Recommendations = () => {
 
               <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex space-x-4 flex-wrap gap-2">
+                  <button 
+                    onClick={async () => {
+                      const isBookmarked = bookmarkedSchemes.has(rec.scheme_name);
+                      try {
+                        if (isBookmarked) {
+                          await bookmarksAPI.removeBookmark(rec.scheme_name);
+                          setBookmarkedSchemes(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(rec.scheme_name);
+                            return newSet;
+                          });
+                          toast.success('Bookmark removed');
+                        } else {
+                          await bookmarksAPI.addBookmark(rec);
+                          setBookmarkedSchemes(prev => new Set(prev).add(rec.scheme_name));
+                          toast.success('Scheme bookmarked!');
+                        }
+                      } catch (error) {
+                        console.error('Bookmark error:', error);
+                        toast.error(isBookmarked ? 'Failed to remove bookmark' : 'Failed to add bookmark');
+                      }
+                    }}
+                    className={`btn btn-sm ${bookmarkedSchemes.has(rec.scheme_name) 
+                      ? 'btn-primary' 
+                      : 'btn-outline'}`}
+                    title={bookmarkedSchemes.has(rec.scheme_name) ? 'Remove bookmark' : 'Add to bookmarks'}
+                  >
+                    <Heart className={`w-4 h-4 mr-1 ${bookmarkedSchemes.has(rec.scheme_name) ? 'fill-current' : ''}`} />
+                    {bookmarkedSchemes.has(rec.scheme_name) ? 'Bookmarked' : 'Bookmark'}
+                  </button>
+                  <button 
+                    onClick={() => handleVisitOfficialPage(rec)}
+                    className="btn btn-primary btn-sm"
+                    title="Visit the official website for this scheme"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    Visit Official Page
+                  </button>
                   {rec.eligibility && (
                     <button 
                       onClick={() => handleEligibilityClick(rec)}
-                      className="btn btn-primary btn-sm"
+                      className="btn btn-outline btn-sm"
                     >
                       <Target className="w-4 h-4 mr-1" />
                       Check Eligibility
@@ -596,7 +784,7 @@ const Recommendations = () => {
                       onClick={() => handleApplicationClick(rec)}
                       className="btn btn-outline btn-sm"
                     >
-                      <ExternalLink className="w-4 h-4 mr-1" />
+                      <ClipboardList className="w-4 h-4 mr-1" />
                       Application Process
                     </button>
                   )}
@@ -727,7 +915,7 @@ const Recommendations = () => {
                   </button>
                   <button
                     onClick={() => {
-                      toast.success('Redirecting to official portal...');
+                      handleVisitOfficialPage(selectedScheme);
                       closeModals();
                     }}
                     className="btn btn-primary"
@@ -1002,13 +1190,13 @@ const Recommendations = () => {
                   </button>
                   <button
                     onClick={() => {
-                      toast.success('Document checklist downloaded!');
+                      handleVisitOfficialPage(selectedScheme);
                       closeModals();
                     }}
                     className="btn btn-primary"
                   >
-                    <Download className="w-4 h-4 mr-1" />
-                    Download Checklist
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    Visit Official Page
                   </button>
                 </div>
               </div>

@@ -104,10 +104,40 @@ router.get('/status', auth, async (req, res) => {
 // @access  Private
 router.post('/quick', [
   auth,
-  body('age').isInt({ min: 18, max: 100 }).withMessage('Age must be between 18 and 100'),
-  body('occupation').trim().notEmpty().withMessage('Occupation is required'),
-  body('state').trim().notEmpty().withMessage('State is required'),
-  body('interests').isArray({ min: 1 }).withMessage('At least one interest is required'),
+  // Validate only if provided
+  body('age').optional().custom((value) => {
+    if (value !== undefined && value !== null && value !== '') {
+      const ageNum = parseInt(value);
+      if (isNaN(ageNum) || ageNum < 18 || ageNum > 100) {
+        throw new Error('Age must be between 18 and 100');
+      }
+    }
+    return true;
+  }),
+  body('occupation').optional().custom((value) => {
+    if (value !== undefined && value !== null && value !== '') {
+      if (String(value).trim().length === 0) {
+        throw new Error('Occupation cannot be empty');
+      }
+    }
+    return true;
+  }),
+  body('state').optional().custom((value) => {
+    if (value !== undefined && value !== null && value !== '') {
+      if (String(value).trim().length === 0) {
+        throw new Error('State cannot be empty');
+      }
+    }
+    return true;
+  }),
+  body('interests').optional().custom((value) => {
+    if (value !== undefined && value !== null) {
+      if (!Array.isArray(value)) {
+        throw new Error('Interests must be an array');
+      }
+    }
+    return true;
+  }),
   body('top_k').optional().isInt({ min: 1, max: 20 }).withMessage('top_k must be between 1 and 20')
 ], async (req, res) => {
   try {
@@ -119,7 +149,32 @@ router.post('/quick', [
       });
     }
 
-    const { age, occupation, state, interests, top_k = 5 } = req.body;
+    // Get data from request body, with sensible defaults - optimized processing
+    const age = (() => {
+      const val = req.body.age;
+      if (val === undefined || val === null || val === '') return 25;
+      const parsed = parseInt(val);
+      return (isNaN(parsed) || parsed < 18 || parsed > 100) ? 25 : parsed;
+    })();
+
+    const occupation = (() => {
+      const val = req.body.occupation;
+      return (val && String(val).trim()) || 'Student';
+    })();
+
+    const state = (() => {
+      const val = req.body.state;
+      return (val && String(val).trim()) || 'Karnataka';
+    })();
+
+    const interests = (() => {
+      const val = req.body.interests;
+      if (!val || !Array.isArray(val) || val.length === 0) return ['education'];
+      const filtered = val.filter(i => i && String(i).trim().length > 0);
+      return filtered.length > 0 ? filtered : ['education'];
+    })();
+
+    const top_k = req.body.top_k ? parseInt(req.body.top_k) : 10; // Match default of regular endpoint
 
     // Create a minimal profile for quick recommendations
     const quickProfile = {
@@ -127,9 +182,9 @@ router.post('/quick', [
       occupation,
       state,
       interests,
-      income: 0, // Default value
-      caste_group: 'General', // Default value
-      gender: 'other', // Default value
+      income: 0,
+      caste_group: 'General',
+      gender: 'other',
       previous_applications: []
     };
 
@@ -147,13 +202,13 @@ router.post('/quick', [
 
     res.json({
       message: 'Quick recommendations generated successfully',
-      recommendations,
+      recommendations: recommendations || [],
       profile: quickProfile,
-      totalRecommendations: recommendations.length
+      totalRecommendations: recommendations?.length || 0
     });
 
   } catch (error) {
-    console.error('Quick recommendation error:', error);
+    console.error('Quick recommendation error:', error.message);
     res.status(500).json({ 
       message: 'Failed to generate quick recommendations. Please try again later.',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
