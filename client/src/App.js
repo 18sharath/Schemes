@@ -15,6 +15,7 @@ import Dashboard from './pages/Dashboard';
 import SchemeForm from './pages/SchemeForm';
 import Bookmarks from './pages/Bookmarks';
 import LoadingSpinner from './components/LoadingSpinner';
+import ChatbotWidget from './components/ChatbotWidget';
 
 function AppContent() {
   const { loading } = useAuth();
@@ -68,6 +69,7 @@ function AppContent() {
         </Routes>
       </main>
       <Footer />
+      <ChatbotWidget />
     </div>
   );
 }

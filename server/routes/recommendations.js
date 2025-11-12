@@ -42,7 +42,10 @@ router.post('/', [
     }
 
     // Get recommendations from ML service
-    const recommendations = await mlService.getRecommendations(userProfile, top_k);
+    let recommendations = await mlService.getRecommendations(userProfile, top_k);
+
+    // Post-filter recommendations using hard eligibility checks
+    recommendations = applyEligibilityFilter(recommendations, req.user.profile);
 
     res.json({
       message: 'Recommendations generated successfully',
@@ -198,7 +201,10 @@ router.post('/quick', [
     }
 
     // Get recommendations from ML service
-    const recommendations = await mlService.getRecommendations(quickProfile, top_k);
+    let recommendations = await mlService.getRecommendations(quickProfile, top_k);
+
+    // Post-filter with whatever data is known (quick profile has limited fields)
+    recommendations = applyEligibilityFilter(recommendations, quickProfile);
 
     res.json({
       message: 'Quick recommendations generated successfully',
@@ -217,3 +223,134 @@ router.post('/quick', [
 });
 
 module.exports = router;
+
+/**
+ * Apply strict eligibility filtering and conservative down-ranking based on
+ * user profile vs scheme eligibility text. This prevents obviously wrong matches
+ * (e.g. scheme only for SC/ST with user caste General; income > threshold).
+ */
+function applyEligibilityFilter(recommendations, profile) {
+  if (!Array.isArray(recommendations)) return [];
+
+  const user = {
+    caste: String(profile.caste_group || '').toLowerCase(),
+    income: Number(profile.income || 0),
+    gender: String(profile.gender || '').toLowerCase(),
+    occupation: String(profile.occupation || '').toLowerCase(),
+    age: Number(profile.age || 0),
+    state: String(profile.state || '').toLowerCase(),
+  };
+
+  const filtered = [];
+
+  for (const rec of recommendations) {
+    const eligibilityText = String(rec.eligibility || rec.Eligibility || '').toLowerCase();
+
+    // If no eligibility text, allow but do not alter.
+    if (!eligibilityText || eligibilityText.trim().length < 5) {
+      filtered.push(rec);
+      continue;
+    }
+
+    // 1) Caste constraints (strict)
+    // Detect mentions like "only for sc/st", "reserved for sc", etc.
+    const mentionsSC = /\b(sc|scheduled caste)\b/.test(eligibilityText);
+    const mentionsST = /\b(st|scheduled tribe)\b/.test(eligibilityText);
+    const mentionsOBC = /\bobc\b/.test(eligibilityText);
+    const mentionsEBC = /\bebc\b/.test(eligibilityText);
+    const mentionsEWS = /\bews\b/.test(eligibilityText);
+
+    // If the text contains explicit caste-only language, enforce it
+    const casteOnly = /(only|exclusively|reserved)\s+(for|to)/.test(eligibilityText);
+    if (casteOnly) {
+      let allowed = false;
+      if (mentionsSC && user.caste.includes('sc')) allowed = true;
+      if (mentionsST && user.caste.includes('st')) allowed = true;
+      if (mentionsOBC && user.caste.includes('obc')) allowed = true;
+      if (mentionsEBC && user.caste.includes('ebc')) allowed = true;
+      if (mentionsEWS && user.caste.includes('ews')) allowed = true;
+      if (!allowed) {
+        // Hard reject
+        continue;
+      }
+    } else {
+      // If a single caste is clearly specified without "only", softly filter when it clearly excludes
+      if ((mentionsSC || mentionsST || mentionsOBC || mentionsEBC || mentionsEWS) && user.caste) {
+        const casteMatches =
+          (mentionsSC && user.caste.includes('sc')) ||
+          (mentionsST && user.caste.includes('st')) ||
+          (mentionsOBC && user.caste.includes('obc')) ||
+          (mentionsEBC && user.caste.includes('ebc')) ||
+          (mentionsEWS && user.caste.includes('ews'));
+        if (!casteMatches) {
+          // Down-rank heavily by reducing hybrid score if present; otherwise skip
+          if (typeof rec.score_hybrid === 'number') {
+            rec.score_hybrid = Math.max(0, rec.score_hybrid - 0.5);
+          } else {
+            continue;
+          }
+        }
+      }
+    }
+
+    // 2) Income thresholds
+    // Look for patterns like "income below/less than/not exceed/upto 500000"
+    const incomeMatch = eligibilityText.match(/(income|annual income|family income)[^0-9]{0,30}([₹rs\.\s]*)(\d[\d,\.]+)/i);
+    if (incomeMatch) {
+      const raw = incomeMatch[3] || '';
+      const threshold = parseInt(raw.replace(/[^\d]/g, ''), 10);
+      if (!Number.isNaN(threshold) && threshold > 0) {
+        const isUpperBound = /(below|less than|not exceed|upto|up to|<=|less or equal|not more than)/.test(eligibilityText);
+        const isLowerBound = /(above|at least|minimum|>=|more than)/.test(eligibilityText);
+        if (isUpperBound && user.income && user.income > threshold) {
+          continue;
+        }
+        if (isLowerBound && user.income && user.income < threshold) {
+          continue;
+        }
+      }
+    }
+
+    // 3) Gender constraints
+    const mentionsWomenOnly = /(women only|only for women|girls only|only for girls|female candidates only)/.test(eligibilityText);
+    const mentionsMenOnly = /(men only|only for men|boys only|only for boys|male candidates only)/.test(eligibilityText);
+    if (mentionsWomenOnly && user.gender && !user.gender.includes('female')) {
+      continue;
+    }
+    if (mentionsMenOnly && user.gender && !user.gender.includes('male')) {
+      continue;
+    }
+
+    // 4) Age constraints (simple)
+    // Detect "between 18 and 35", "minimum 21", "not above 30"
+    const between = eligibilityText.match(/between\s+(\d{1,3})\s+(?:and|to)\s+(\d{1,3})/);
+    if (between && user.age) {
+      const minA = parseInt(between[1], 10);
+      const maxA = parseInt(between[2], 10);
+      if (!Number.isNaN(minA) && !Number.isNaN(maxA)) {
+        if (user.age < minA || user.age > maxA) continue;
+      }
+    }
+    const minAge = eligibilityText.match(/(minimum|at least|>=)\s+(\d{1,3})\s*(years|yrs)?/);
+    if (minAge && user.age) {
+      const val = parseInt(minAge[2], 10);
+      if (!Number.isNaN(val) && user.age < val) continue;
+    }
+    const maxAge = eligibilityText.match(/(maximum|not above|<=)\s+(\d{1,3})\s*(years|yrs)?/);
+    if (maxAge && user.age) {
+      const val = parseInt(maxAge[2], 10);
+      if (!Number.isNaN(val) && user.age > val) continue;
+    }
+
+    filtered.push(rec);
+  }
+
+  // Re-rank: if score_hybrid exists, sort by it; else keep order
+  filtered.sort((a, b) => {
+    const sa = typeof a.score_hybrid === 'number' ? a.score_hybrid : 0;
+    const sb = typeof b.score_hybrid === 'number' ? b.score_hybrid : 0;
+    return sb - sa;
+  });
+
+  return filtered;
+}

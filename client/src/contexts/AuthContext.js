@@ -76,6 +76,25 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const googleLogin = async (idToken) => {
+    try {
+      const response = await authAPI.googleLogin(idToken);
+      const { token, user } = response.data;
+
+      localStorage.setItem('token', token);
+      authAPI.setAuthToken(token);
+      setUser(user);
+
+      return { success: true, user };
+    } catch (error) {
+      console.error('Google login failed:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Google authentication failed'
+      };
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     authAPI.setAuthToken(null);
@@ -91,6 +110,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     register,
+    googleLogin,
     logout,
     updateUser,
     loadUser,

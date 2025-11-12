@@ -22,6 +22,7 @@ import {
   Heart
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import SchemeDetailModal from '../components/SchemeDetailModal';
 
 const Recommendations = () => {
   const { user } = useAuth();
@@ -37,6 +38,7 @@ const Recommendations = () => {
   const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [showEligibilityModal, setShowEligibilityModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedScheme, setSelectedScheme] = useState(null);
   const [profileStatus, setProfileStatus] = useState(null);
   const [eligibilityQuestions, setEligibilityQuestions] = useState([]);
@@ -287,6 +289,7 @@ const Recommendations = () => {
     setShowApplicationModal(false);
     setShowDocumentsModal(false);
     setShowEligibilityModal(false);
+    setShowDetailModal(false);
     setSelectedScheme(null);
     setEligibilityQuestions([]);
     setEligibilityAnswers({});
@@ -298,16 +301,53 @@ const Recommendations = () => {
     if (!eligibilityText) return [];
 
     const questions = [];
-    
-    // First, try to split by numbered lists (1., 2., 3., etc.)
-    let items = eligibilityText.split(/(?=\d+[\.\)]\s)/);
-    
-    // If that didn't work, try splitting by newlines
-    if (items.length === 1) {
-      items = eligibilityText.split(/\n/).filter(line => line.trim());
+
+    // Normalize whitespace
+    const normalized = eligibilityText
+      .replace(/\r/g, ' ')
+      .replace(/\t/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Primary split strategies (ordered)
+    // 1) Numbered lists (1., 2.), (a), (i), etc.
+    let items = normalized.split(/(?=\b(?:\(?\d+[\.\)]|\([a-z]\)|\([ivx]+\))\s)/i).filter(s => s.trim());
+
+    // 2) Bullet-like separators, semicolons, or explicit newlines
+    if (items.length <= 1) {
+      items = normalized
+        .split(/(?:\n|;|•|-{1,2}|\u2022|\u25CF|\u25E6)/)
+        .map(s => s.trim())
+        .filter(Boolean);
     }
+
+    // 3) As a last resort, split on periods that likely end clauses (avoid decimals)
+    if (items.length <= 1) {
+      items = normalized
+        .split(/(?<=[a-z0-9\)])\.\s+(?=[A-Z(])/)
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+
+    // Further split clauses on " and / or " when they look like separate conditions
+    const clauseSplit = (text) => {
+      // Only split if long or has clear conjunctions
+      if (text.length < 100) return [text];
+      // Split on and/or with spaces around (avoid inside words)
+      let parts = text.split(/\s+(?:and|or|&)\s+/i);
+      // If splitting was too aggressive (created too many tiny parts), fallback
+      if (parts.filter(p => p.trim().length >= 12).length < 2) return [text];
+      return parts.map(p => p.trim()).filter(p => p.length >= 8);
+    };
+
+    // Build a flat list of candidate clauses
+    const candidateClauses = [];
+    items.forEach((raw) => {
+      const splits = clauseSplit(raw);
+      splits.forEach(s => candidateClauses.push(s));
+    });
     
-    items.forEach((item, index) => {
+    candidateClauses.forEach((item, index) => {
       // Remove numbering (1., 2., etc.) and bullet points
       let cleaned = item.replace(/^\d+[\.\)]\s*/, '').replace(/^[-•*]\s*/, '').trim();
       
@@ -392,7 +432,11 @@ const Recommendations = () => {
         originalText: eligibilityText
       });
     }
-    
+
+    // Limit to a reasonable number to avoid overwhelming UI
+    const MAX_QUESTIONS = 12;
+    const trimmed = questions.slice(0, MAX_QUESTIONS);
+
     return questions;
   };
 
@@ -445,6 +489,75 @@ const Recommendations = () => {
   const handleEligibilityReset = () => {
     setEligibilityAnswers({});
     setIsEligible(null);
+  };
+
+  // Parse application/process text into readable blocks preserving sections and step groups
+  const parseApplicationBlocks = (text) => {
+    if (!text) return [];
+
+    const normalized = text
+      .replace(/\r/g, ' ')
+      .replace(/\t/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    // Identify section headers commonly found
+    const sectionRegex = /(New Registration\s*:|Fresh Application\s*:|Track Payment Status\s*:|How to Apply\s*:|Registration\s*:|Application Process\s*:)/gi;
+
+    // Split into tokens keeping the headers
+    const tokens = normalized.split(sectionRegex).filter(Boolean).map(t => t.trim());
+
+    const blocks = [];
+
+    if (tokens.length > 1) {
+      // tokens like [header, content, header, content, ...]
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        const isHeader = /:$/i.test(token);
+        if (isHeader) {
+          blocks.push(token); // push header line as-is
+          // Next token is content for this section
+          const content = tokens[i + 1] || '';
+          if (content) {
+            const steps = splitIntoSteps(content);
+            steps.forEach(s => blocks.push(s));
+          }
+          i++; // skip content we just processed
+        } else {
+          // No explicit header before; just split into steps
+          splitIntoSteps(token).forEach(s => blocks.push(s));
+        }
+      }
+    } else {
+      // No recognizable headers; just split whole text
+      splitIntoSteps(normalized).forEach(s => blocks.push(s));
+    }
+
+    // Reduce overly long output
+    return blocks.slice(0, 50);
+  };
+
+  // Helper: split a chunk into logical "Step X" groups; merge trailing sentences until next step
+  const splitIntoSteps = (content) => {
+    const parts = content.split(/(?=Step\s*\d+\s*:)/i).filter(Boolean);
+    if (parts.length > 1) {
+      return parts.map(p => p.trim().replace(/\s+/g, ' '));
+    }
+
+    // Fallback: try numbered, bullets, or sentence groups
+    let clauses = content
+      .split(/(?=\b(?:\(?\d+[\.\)]|\([a-z]\)|\([ivx]+\))\s+)/i)
+      .filter(Boolean);
+
+    if (clauses.length <= 1) {
+      clauses = content.split(/(?:\n|;|\u2022|\u25CF|\u25E6|-{1,2})/).filter(Boolean);
+    }
+
+    if (clauses.length <= 1) {
+      clauses = content.split(/(?<=[a-z0-9\)])\.\s+(?=[A-Z(])/).filter(Boolean);
+    }
+
+    return clauses.map(c => c.trim()).filter(c => c.length >= 3);
   };
 
   // Handle redirect to official website or Google search
@@ -667,9 +780,17 @@ const Recommendations = () => {
             <div key={index} className="card p-6 hover:shadow-lg transition-shadow bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100">
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                    {rec.scheme_name}
-                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedScheme(rec); setShowDetailModal(true); }}
+                    className="text-left group"
+                    title="View full details"
+                  >
+                    <h3 className="text-2xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent group-hover:opacity-90">
+                      {rec.scheme_name}
+                    </h3>
+                    <span className="sr-only">Open details</span>
+                  </button>
                   <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
                     {rec.level && (
                       <span className="flex items-center">
@@ -878,11 +999,19 @@ const Recommendations = () => {
                 {selectedScheme.application ? (
                   <div>
                     <h5 className="font-medium text-gray-800 dark:text-gray-200 mb-2">Application Process:</h5>
-                    <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg">
-                      <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
-                        {selectedScheme.application}
+                    {parseApplicationBlocks(selectedScheme.application).length > 1 ? (
+                      <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg text-sm text-gray-700 dark:text-gray-300 space-y-2">
+                        {parseApplicationBlocks(selectedScheme.application).map((step, idx) => (
+                          <div key={idx} className="leading-relaxed">{step}</div>
+                        ))}
                       </div>
-                    </div>
+                    ) : (
+                      <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg">
+                        <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
+                          {selectedScheme.application}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div>
@@ -1203,6 +1332,18 @@ const Recommendations = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Scheme Details Modal */}
+      {showDetailModal && selectedScheme && (
+        <SchemeDetailModal
+          scheme={selectedScheme}
+          onClose={closeModals}
+          onVisit={() => {
+            handleVisitOfficialPage(selectedScheme);
+            closeModals();
+          }}
+        />
       )}
     </div>
   );

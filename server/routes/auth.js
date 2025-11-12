@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
+const { OAuth2Client } = require('google-auth-library');
 
 const router = express.Router();
 
@@ -12,6 +13,10 @@ const generateToken = (id) => {
     expiresIn: '7d'
   });
 };
+
+// Google OAuth client
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClient = googleClientId ? new OAuth2Client(googleClientId) : null;
 
 // @route   POST /api/auth/register
 // @desc    Register user
@@ -148,6 +153,103 @@ router.post('/login', [
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ message: 'Server error during login' });
+  }
+});
+
+// @route   POST /api/auth/google
+// @desc    Login/Register with Google ID Token
+// @access  Public
+router.post('/google', async (req, res) => {
+  try {
+    if (!googleClient) {
+      return res.status(500).json({ message: 'Google auth not configured', details: 'Missing GOOGLE_CLIENT_ID' });
+    }
+
+    const { idToken } = req.body;
+    if (!idToken) {
+      return res.status(400).json({ message: 'Missing Google ID token' });
+    }
+
+    // Verify token
+    let ticket;
+    try {
+      ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: googleClientId
+      });
+    } catch (verifyErr) {
+      console.error('Google token verify failed:', {
+        error: verifyErr?.message,
+        audienceConfigured: googleClientId,
+      });
+      return res.status(401).json({ message: 'Invalid Google token', details: 'Token verification failed' });
+    }
+    const payload = ticket.getPayload();
+
+    const googleId = payload.sub;
+    const email = payload.email?.toLowerCase();
+    const name = payload.name || payload.given_name || 'Google User';
+    const avatarUrl = payload.picture;
+    const emailVerified = payload.email_verified;
+
+    if (!email || !emailVerified) {
+      return res.status(400).json({ message: 'Google account email not verified' });
+    }
+
+    // Find user by googleId or email
+    let user = await User.findOne({ $or: [{ googleId }, { email }] });
+
+    if (!user) {
+      // Create new user with provider google
+      user = new User({
+        name,
+        email,
+        provider: 'google',
+        googleId,
+        avatarUrl
+      });
+      await user.save();
+    } else {
+      // Link googleId/provider if existing local account
+      let changed = false;
+      if (!user.googleId) {
+        user.googleId = googleId;
+        changed = true;
+      }
+      if (user.provider !== 'google') {
+        user.provider = 'google';
+        changed = true;
+      }
+      if (avatarUrl && user.avatarUrl !== avatarUrl) {
+        user.avatarUrl = avatarUrl;
+        changed = true;
+      }
+      if (changed) {
+        await user.save();
+      }
+    }
+
+    user.lastLogin = new Date();
+    await user.save();
+
+    const token = generateToken(user._id);
+
+    res.json({
+      message: 'Google authentication successful',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        profile: user.profile,
+        isProfileComplete: user.isProfileComplete(),
+        avatarUrl: user.avatarUrl
+      }
+    });
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.status(500).json({ message: 'Server error during Google authentication' });
   }
 });
 

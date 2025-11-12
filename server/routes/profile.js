@@ -164,18 +164,6 @@ router.post('/complete', auth, async (req, res) => {
 router.get('/status', auth, async (req, res) => {
   try {
     const profile = req.user.profile;
-    // Debug logging
-    console.log('Profile status check:', {
-      age: profile.age,
-      income: profile.income,
-      caste_group: profile.caste_group,
-      occupation: profile.occupation,
-      gender: profile.gender,
-      state: profile.state,
-      interests: profile.interests,
-      interestsLength: profile.interests ? profile.interests.length : 0
-    });
-    
     const status = {
       isComplete: req.user.isProfileComplete(),
       missingFields: [],

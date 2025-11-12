@@ -18,8 +18,24 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Password is required'],
+    // Not required for OAuth users
+    required: function () {
+      return this.provider === 'local';
+    },
     minlength: [6, 'Password must be at least 6 characters']
+  },
+  provider: {
+    type: String,
+    enum: ['local', 'google'],
+    default: 'local'
+  },
+  googleId: {
+    type: String,
+    index: true
+  },
+  avatarUrl: {
+    type: String,
+    trim: true
   },
   phone: {
     type: String,
@@ -105,7 +121,7 @@ const userSchema = new mongoose.Schema({
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
+  if (!this.isModified('password') || !this.password) return next();
   
   try {
     const salt = await bcrypt.genSalt(12);
