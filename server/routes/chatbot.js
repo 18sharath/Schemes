@@ -39,14 +39,72 @@ router.post('/message', [
           // Get user's recent recommendations for context
           try {
             const recommendations = await mlService.getRecommendations(user.profile, 10);
-            schemes = recommendations.map(rec => ({
-              name: rec.scheme_name,
-              category: rec.schemeCategory,
-              level: rec.level,
-              details: rec.details,
-              benefits: rec.benefits,
-              eligibility: rec.eligibility,
-            }));
+            schemes = recommendations.map(rec => {
+              // Extract URL from various possible fields
+              const url = rec.url || 
+                         rec.official_url || 
+                         rec.website || 
+                         rec.official_website || 
+                         rec.link || 
+                         rec.official_link ||
+                         rec.portal_url ||
+                         rec.application_url ||
+                         null;
+              
+              // Try to extract URL from various text fields if not directly available
+              let extractedUrl = url;
+              
+              // Function to extract URLs from text
+              const extractUrlFromText = (text) => {
+                if (!text) return null;
+                
+                // Try to find HTTP/HTTPS URLs first
+                const httpRegex = /https?:\/\/[^\s\)]+/gi;
+                const httpMatch = text.match(httpRegex);
+                if (httpMatch && httpMatch.length > 0) {
+                  return httpMatch[0].replace(/[.,;:!?\)]+$/, ''); // Remove trailing punctuation
+                }
+                
+                // Try to find www. URLs
+                const wwwRegex = /www\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s\)]*/gi;
+                const wwwMatch = text.match(wwwRegex);
+                if (wwwMatch && wwwMatch.length > 0) {
+                  let url = wwwMatch[0].replace(/[.,;:!?\)]+$/, '');
+                  return url.startsWith('http') ? url : 'https://' + url;
+                }
+                
+                // Try to find domain-like patterns (portal.gov.in, etc.)
+                const domainRegex = /\b[a-zA-Z0-9-]+\.(gov|nic|in|com|org|net)\.[a-zA-Z]{2,}[^\s\)]*/gi;
+                const domainMatch = text.match(domainRegex);
+                if (domainMatch && domainMatch.length > 0) {
+                  let url = domainMatch[0].replace(/[.,;:!?\)]+$/, '');
+                  return url.startsWith('http') ? url : 'https://' + url;
+                }
+                
+                return null;
+              };
+              
+              // Extract from application field
+              if (!extractedUrl && rec.application) {
+                extractedUrl = extractUrlFromText(rec.application);
+              }
+              
+              // Extract from details field if still not found
+              if (!extractedUrl && rec.details) {
+                extractedUrl = extractUrlFromText(rec.details);
+              }
+              
+              return {
+                name: rec.scheme_name,
+                category: rec.schemeCategory,
+                level: rec.level,
+                details: rec.details,
+                benefits: rec.benefits,
+                eligibility: rec.eligibility,
+                application: rec.application,
+                portal_url: extractedUrl,
+              };
+            });
           } catch (error) {
             console.warn('Could not fetch recommendations for chatbot context:', error.message);
             // Continue without schemes context

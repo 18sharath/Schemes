@@ -49,12 +49,24 @@ class ChatbotService {
     return schemes
       .slice(0, 20) // Limit to 20 schemes to avoid token limits
       .map((scheme, index) => {
-        return `${index + 1}. ${scheme.name || 'Unknown Scheme'}\n` +
+        let schemeInfo = `${index + 1}. ${scheme.name || 'Unknown Scheme'}\n` +
                `   Category: ${scheme.category || 'N/A'}\n` +
                `   Level: ${scheme.level || 'N/A'}\n` +
                `   Details: ${scheme.details || 'N/A'}\n` +
                `   Benefits: ${scheme.benefits || 'N/A'}\n` +
                `   Eligibility: ${scheme.eligibility || 'N/A'}`;
+        
+        // Include application process if available
+        if (scheme.application) {
+          schemeInfo += `\n   Application Process: ${scheme.application.substring(0, 300)}${scheme.application.length > 300 ? '...' : ''}`;
+        }
+        
+        // Include portal URL if available
+        if (scheme.portal_url) {
+          schemeInfo += `\n   Official Portal URL: ${scheme.portal_url}`;
+        }
+        
+        return schemeInfo;
       })
       .join('\n\n');
   }
@@ -73,8 +85,9 @@ class ChatbotService {
 1. Answer questions about government schemes, eligibility, documents, and application processes
 2. Help users understand scheme benefits and requirements
 3. Provide information based on the FAQs and available schemes
-4. Be friendly, concise, and informative
-5. If you don't know something specific, guide users on how to find the information
+4. ALWAYS include official portal links when available in the scheme data
+5. Be friendly, concise, and informative
+6. If you don't know something specific, guide users on how to find the information
 
 IMPORTANT CONTEXT:
 
@@ -84,13 +97,20 @@ ${faqsContext}
 Available Schemes (from user's recommendations):
 ${schemeContext}
 
-Instructions:
+CRITICAL INSTRUCTIONS:
+- When answering about a scheme, ALWAYS include the official portal URL if it's provided in the scheme data above
+- Format portal links clearly, e.g., "Official Portal: https://example.com" or "Apply here: https://portal.gov.in"
+- If a portal URL is provided in the scheme data, make it prominent in your response
+- If a user asks "what is the official link for [scheme]" or "where can I apply for [scheme]", provide the portal URL from the scheme data
+- If the portal URL is not in the scheme data but the scheme name is provided, use your knowledge to suggest the most likely official portal (e.g., state government portals, central government portals)
+- For schemes, always mention: eligibility, benefits, required documents, and the official portal link (if available)
 - Answer questions based on the FAQs and scheme information provided above
-- If a user asks about a scheme not in the list, provide general guidance about how to find information
+- If a user asks about a scheme not in the list, provide general guidance and suggest searching for the official portal
 - Be specific when answering about eligibility, documents, or benefits
 - Keep responses conversational and helpful
 - If the question is unclear, ask for clarification
-- Always prioritize accuracy and helpfulness`;
+- Always prioritize accuracy and helpfulness
+- When providing portal links, format them as clickable URLs`;
   }
 
   /**

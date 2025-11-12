@@ -96,18 +96,66 @@ const ChatbotWidget = () => {
           </div>
 
           <div className="px-4 py-3 space-y-3 max-h-[50vh] overflow-y-auto flex flex-col">
-            {messages.map((m, idx) => (
-              <div 
-                key={idx} 
-                className={`${
-                  m.role === 'user' 
-                    ? 'self-end max-w-[80%] bg-blue-600 text-white rounded-lg p-2 px-3' 
-                    : 'self-start max-w-[90%] text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded-lg p-2 px-3'
-                } whitespace-pre-line break-words`}
-              >
-                {m.text}
-              </div>
-            ))}
+            {messages.map((m, idx) => {
+              // Convert URLs in text to clickable links
+              const formatMessage = (text) => {
+                const urlRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/g;
+                const parts = [];
+                let lastIndex = 0;
+                let match;
+                
+                while ((match = urlRegex.exec(text)) !== null) {
+                  // Add text before URL
+                  if (match.index > lastIndex) {
+                    parts.push(text.substring(lastIndex, match.index));
+                  }
+                  
+                  // Add clickable URL
+                  let url = match[0];
+                  if (url.startsWith('www.')) {
+                    url = 'https://' + url;
+                  }
+                  
+                  parts.push(
+                    <a
+                      key={match.index}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`${
+                        m.role === 'user'
+                          ? 'text-blue-200 underline hover:text-blue-100'
+                          : 'text-blue-600 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300'
+                      } break-all`}
+                    >
+                      {match[0]}
+                    </a>
+                  );
+                  
+                  lastIndex = match.index + match[0].length;
+                }
+                
+                // Add remaining text
+                if (lastIndex < text.length) {
+                  parts.push(text.substring(lastIndex));
+                }
+                
+                return parts.length > 0 ? parts : text;
+              };
+              
+              return (
+                <div 
+                  key={idx} 
+                  className={`${
+                    m.role === 'user' 
+                      ? 'self-end max-w-[80%] bg-blue-600 text-white rounded-lg p-2 px-3' 
+                      : 'self-start max-w-[90%] text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded-lg p-2 px-3'
+                  } whitespace-pre-line break-words`}
+                >
+                  {formatMessage(m.text)}
+                </div>
+              );
+            })}
             {isLoading && (
               <div className="self-start max-w-[90%] bg-gray-100 dark:bg-gray-800 rounded-lg p-2 px-3 flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
