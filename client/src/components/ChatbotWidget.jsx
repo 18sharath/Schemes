@@ -1,132 +1,53 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MessageSquare, Send, X, Search } from 'lucide-react';
-import faqs from '../data/faqs';
+import React, { useEffect, useRef, useState } from 'react';
+import { MessageSquare, Send, X, Search, Loader2 } from 'lucide-react';
+import { chatbotAPI } from '../services/api';
 
 const ChatbotWidget = () => {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([
-    { role: 'bot', text: 'Hi! I can answer FAQs and help you explore schemes. Ask me anything.' },
+    { role: 'bot', text: 'Hi! I\'m your AI assistant powered by Google Gemini. I can answer FAQs and help you explore schemes. Ask me anything!' },
   ]);
-  const [schemeIndex, setSchemeIndex] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
   const panelRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Try to load locally saved recommendations for lightweight search
-  useEffect(() => {
-    try {
-      // Find any recommendations_* keys in localStorage
-      const keys = Object.keys(localStorage).filter((k) => k.startsWith('recommendations_'));
-      let collected = [];
-      keys.forEach((k) => {
-        const arr = JSON.parse(localStorage.getItem(k) || '[]');
-        if (Array.isArray(arr)) {
-          collected = collected.concat(
-            arr.map((r) => ({
-              name: r.scheme_name,
-              category: r.schemeCategory,
-              level: r.level,
-              details: r.details,
-              benefits: r.benefits,
-              eligibility: r.eligibility,
-            }))
-          );
-        }
-      });
-      // Deduplicate by name
-      const seen = new Set();
-      const unique = [];
-      for (const s of collected) {
-        const key = (s.name || '').toLowerCase();
-        if (key && !seen.has(key)) {
-          seen.add(key);
-          unique.push(s);
-        }
-      }
-      setSchemeIndex(unique.slice(0, 500)); // cap for perf
-    } catch (e) {
-      // ignore
-    }
-  }, []);
-
-  const searchFAQs = (q) => {
-    const query = q.toLowerCase();
-    const scored = faqs
-      .map((f) => {
-        const hay = `${f.question} ${f.answer} ${f.tags?.join(' ') || ''}`.toLowerCase();
-        const score =
-          (hay.includes(query) ? 2 : 0) +
-          (f.tags || []).reduce((acc, t) => acc + (query.includes(t.toLowerCase()) ? 1 : 0), 0) +
-          // token overlap (simple)
-          query
-            .split(/\s+/)
-            .filter((t) => t && hay.includes(t)).length;
-        return { f, score };
-      })
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3)
-      .map((x) => x.f);
-    return scored;
-  };
-
-  const searchSchemes = (q) => {
-    if (!q || !schemeIndex.length) return [];
-    const query = q.toLowerCase();
-    const results = schemeIndex
-      .map((s) => {
-        const hay = `${s.name} ${s.category} ${s.level} ${s.details} ${s.benefits} ${s.eligibility}`.toLowerCase();
-        const nameBoost = (s.name || '').toLowerCase().includes(query) ? 3 : 0;
-        const score =
-          nameBoost +
-          (hay.includes(query) ? 2 : 0) +
-          query
-            .split(/\s+/)
-            .filter((t) => t && hay.includes(t)).length;
-        return { s, score };
-      })
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5)
-      .map((x) => x.s);
-    return results;
-  };
-
-  const handleSend = (e) => {
+  const handleSend = async (e) => {
     e?.preventDefault();
     const q = input.trim();
-    if (!q) return;
+    if (!q || isLoading) return;
 
-    setMessages((m) => [...m, { role: 'user', text: q }]);
+    // Store current message history before updating state
+    const currentMessages = messages;
+    
+    // Add user message to UI immediately
+    const userMessage = { role: 'user', text: q };
+    const updatedMessages = [...currentMessages, userMessage];
+    setMessages(updatedMessages);
     setInput('');
+    setIsLoading(true);
 
-    // Answer from FAQs first, then scheme search
-    const faqHits = searchFAQs(q);
-    const schemeHits = searchSchemes(q);
-
-    let reply = '';
-    if (faqHits.length) {
-      reply += `Here’s what I found in FAQs:\n\n`;
-      faqHits.forEach((f, i) => {
-        reply += `- ${f.question}\n  ${f.answer}\n\n`;
-      });
+    try {
+      // Get message history for context (last 10 messages, including the new one)
+      const messageHistory = updatedMessages.slice(-10);
+      
+      // Call the chatbot API
+      const response = await chatbotAPI.sendMessage(q, messageHistory);
+      
+      // Add bot response to UI
+      setMessages((m) => [...m, { role: 'bot', text: response.data.response }]);
+    } catch (error) {
+      console.error('Chatbot error:', error);
+      // Add error message
+      const errorMessage = error.response?.data?.message || 
+        'Sorry, I encountered an error. Please try again later.';
+      setMessages((m) => [...m, { 
+        role: 'bot', 
+        text: errorMessage 
+      }]);
+    } finally {
+      setIsLoading(false);
     }
-
-    if (schemeHits.length) {
-      reply += (faqHits.length ? `Also, related schemes:\n\n` : `Related schemes:\n\n`);
-      schemeHits.forEach((s) => {
-        reply += `• ${s.name}\n`;
-        if (s.details) reply += `  ${truncate(s.details)}\n`;
-        if (s.eligibility) reply += `  Eligibility: ${truncate(s.eligibility)}\n`;
-        reply += `\n`;
-      });
-    }
-
-    if (!reply) {
-      reply = `I couldn’t find a direct match. Try different words, or ask about “documents”, “eligibility”, or a scheme name.`;
-    }
-
-    setMessages((m) => [...m, { role: 'bot', text: reply }]);
   };
 
   useEffect(() => {
@@ -135,11 +56,17 @@ const ChatbotWidget = () => {
     }
   }, [open]);
 
-  const truncate = (txt, n = 180) => {
-    if (!txt) return '';
-    const t = String(txt);
-    return t.length > n ? t.slice(0, n - 1) + '…' : t;
-  };
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (open && panelRef.current) {
+      const scrollContainer = panelRef.current.querySelector('.overflow-y-auto');
+      if (scrollContainer) {
+        setTimeout(() => {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        }, 100);
+      }
+    }
+  }, [messages, open]);
 
   return (
     <>
@@ -168,12 +95,25 @@ const ChatbotWidget = () => {
             </button>
           </div>
 
-          <div className="px-4 py-3 space-y-3 max-h-[50vh] overflow-y-auto">
+          <div className="px-4 py-3 space-y-3 max-h-[50vh] overflow-y-auto flex flex-col">
             {messages.map((m, idx) => (
-              <div key={idx} className={`${m.role === 'bot' ? 'text-gray-800 dark:text-gray-200' : 'text-gray-700 dark:text-gray-300'} whitespace-pre-line`}>
+              <div 
+                key={idx} 
+                className={`${
+                  m.role === 'user' 
+                    ? 'self-end max-w-[80%] bg-blue-600 text-white rounded-lg p-2 px-3' 
+                    : 'self-start max-w-[90%] text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded-lg p-2 px-3'
+                } whitespace-pre-line break-words`}
+              >
                 {m.text}
               </div>
             ))}
+            {isLoading && (
+              <div className="self-start max-w-[90%] bg-gray-100 dark:bg-gray-800 rounded-lg p-2 px-3 flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                <span className="text-gray-600 dark:text-gray-400">Thinking...</span>
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleSend} className="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2">
@@ -183,9 +123,18 @@ const ChatbotWidget = () => {
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask about eligibility, documents, or a scheme name…"
               className="flex-1 form-input bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
+              disabled={isLoading}
             />
-            <button type="submit" className="btn btn-primary">
-              <Send className="w-4 h-4" />
+            <button 
+              type="submit" 
+              className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isLoading || !input.trim()}
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
             </button>
           </form>
         </div>

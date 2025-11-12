@@ -9,6 +9,7 @@ const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const recommendationRoutes = require('./routes/recommendations');
 const bookmarkRoutes = require('./routes/bookmarks');
+const chatbotRoutes = require('./routes/chatbot');
 const { connectDB } = require('./config/database');
 
 const app = express();
@@ -56,6 +57,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/bookmarks', bookmarkRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

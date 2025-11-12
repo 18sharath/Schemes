@@ -89,6 +89,14 @@ export const bookmarksAPI = {
   testReminder: () => api.post('/bookmarks/test-reminder'),
 };
 
+// Chatbot API
+export const chatbotAPI = {
+  sendMessage: (message, messageHistory = []) => 
+    api.post('/chatbot/message', { message, messageHistory }),
+  
+  getStatus: () => api.get('/chatbot/status'),
+};
+
 // Health check
 export const healthAPI = {
   check: () => api.get('/health'),
