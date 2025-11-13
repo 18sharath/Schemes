@@ -34,7 +34,7 @@ const en = {
     register: 'Register',
     logout: 'Logout',
     getStarted: 'Get Started',
-    appName: 'SchemeRecommender',
+    appName: 'SchemeNavigator',
   },
 
   // Home Page

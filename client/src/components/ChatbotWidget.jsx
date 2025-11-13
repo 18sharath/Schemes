@@ -1,6 +1,31 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageSquare, Send, X, Search, Loader2 } from 'lucide-react';
+import { Send, X, Search, Loader2 } from 'lucide-react';
 import { chatbotAPI } from '../services/api';
+
+const ChatbotIcon = ({ className = 'w-6 h-6' }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 64 64"
+    className={className}
+    aria-hidden="true"
+  >
+    <defs>
+      <linearGradient id="chatbot-face" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#60a5fa" />
+        <stop offset="100%" stopColor="#4f46e5" />
+      </linearGradient>
+    </defs>
+    <rect x="8" y="16" width="48" height="38" rx="14" fill="url(#chatbot-face)" />
+    <rect x="18" y="12" width="28" height="6" rx="3" fill="#1d4ed8" />
+    <circle cx="22" cy="36" r="6" fill="#fff" opacity="0.9" />
+    <circle cx="42" cy="36" r="6" fill="#fff" opacity="0.9" />
+    <circle cx="22" cy="36" r="2.5" fill="#1d4ed8" />
+    <circle cx="42" cy="36" r="2.5" fill="#1d4ed8" />
+    <path d="M24 47c3.5 3 12.5 3 16 0" stroke="#1d4ed8" strokeWidth="3" strokeLinecap="round" />
+    <circle cx="32" cy="10" r="4" fill="#38bdf8" />
+    <path d="M32 14v6" stroke="#0ea5e9" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
 
 const ChatbotWidget = () => {
   const [open, setOpen] = useState(false);
@@ -76,7 +101,7 @@ const ChatbotWidget = () => {
         onClick={() => setOpen((v) => !v)}
         className="fixed z-40 bottom-6 right-6 rounded-full p-4 shadow-lg bg-blue-600 hover:bg-blue-700 text-white dark:bg-indigo-600 dark:hover:bg-indigo-700 transition-colors"
       >
-        {open ? <X className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
+        {open ? <X className="w-5 h-5" /> : <ChatbotIcon className="w-8 h-8" />}
       </button>
 
       {/* Panel */}

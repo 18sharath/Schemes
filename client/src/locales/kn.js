@@ -34,7 +34,7 @@ const kn = {
     register: 'ನೋಂದಣಿ',
     logout: 'ಲಾಗ್ಔಟ್',
     getStarted: 'ಪ್ರಾರಂಭಿಸಿ',
-    appName: 'ಯೋಜನಾ ಶಿಫಾರಸುಕಾರ',
+    appName: 'ಸ್ಕೀಮ್ ನೆವಿಗೇಟರ್',
   },
 
   // Home Page

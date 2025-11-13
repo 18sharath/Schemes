@@ -22,6 +22,7 @@ router.post('/', [
     }
 
     const { top_k = 10 } = req.body;
+    const fetchSize = Math.min(50, Math.max(top_k * 3, top_k + 10));
     const userProfile = req.user.profile;
 
     // Check if user profile is complete
@@ -42,10 +43,15 @@ router.post('/', [
     }
 
     // Get recommendations from ML service
-    let recommendations = await mlService.getRecommendations(userProfile, top_k);
+    const rawRecommendations = await mlService.getRecommendations(userProfile, fetchSize);
 
     // Post-filter recommendations using hard eligibility checks
-    recommendations = applyEligibilityFilter(recommendations, req.user.profile);
+    const filteredRecommendations = applyEligibilityFilter(rawRecommendations, req.user.profile);
+    let recommendations = filteredRecommendations.slice(0, top_k);
+    // Fallback: if strict filter removed everything, return raw top results
+    if ((!recommendations || recommendations.length === 0) && Array.isArray(rawRecommendations)) {
+      recommendations = rawRecommendations.slice(0, top_k);
+    }
 
     res.json({
       message: 'Recommendations generated successfully',
@@ -57,7 +63,8 @@ router.post('/', [
         caste_group: userProfile.caste_group,
         interests: userProfile.interests
       },
-      totalRecommendations: recommendations.length
+      totalRecommendations: recommendations.length,
+      availableRecommendations: filteredRecommendations.length
     });
 
   } catch (error) {
@@ -178,6 +185,8 @@ router.post('/quick', [
     })();
 
     const top_k = req.body.top_k ? parseInt(req.body.top_k) : 10; // Match default of regular endpoint
+    // Restore robust candidate size for better chances post-filter
+    const fetchSize = Math.min(50, Math.max(top_k * 3, top_k + 10));
 
     // Create a minimal profile for quick recommendations
     const quickProfile = {
@@ -201,16 +210,61 @@ router.post('/quick', [
     }
 
     // Get recommendations from ML service
-    let recommendations = await mlService.getRecommendations(quickProfile, top_k);
+    // Tight but resilient timeouts for quick path (allow cold start + fallbacks)
+    let rawRecommendations;
+    try {
+      // First attempt allows cold-start
+      rawRecommendations = await mlService.getRecommendations(quickProfile, fetchSize, { timeoutMs: 6000 });
+    } catch (e) {
+      // Fallback: try a very small fetch size quickly
+      try {
+        rawRecommendations = await mlService.getRecommendations(quickProfile, Math.max(top_k, 10), { timeoutMs: 2500 });
+      } catch (e2) {
+        // Final fallback: one last moderate attempt
+        try {
+          rawRecommendations = await mlService.getRecommendations(quickProfile, Math.max(top_k, 10), { timeoutMs: 8000 });
+        } catch (e3) {
+          rawRecommendations = [];
+        }
+      }
+    }
 
     // Post-filter with whatever data is known (quick profile has limited fields)
-    recommendations = applyEligibilityFilter(recommendations, quickProfile);
+    const filteredRecommendations = applyEligibilityFilter(rawRecommendations, quickProfile);
+    let recommendations = filteredRecommendations.slice(0, top_k);
+    // Fallback: if strict filter removed everything, return raw top results (quick must be snappy)
+    if ((!recommendations || recommendations.length === 0) && Array.isArray(rawRecommendations)) {
+      recommendations = rawRecommendations.slice(0, top_k);
+    }
+
+    // Final safety net: if still empty, fetch using a generic profile to avoid "no results" toast
+    if (!recommendations || recommendations.length === 0) {
+      const genericProfile = {
+        age: 25,
+        occupation: 'Student',
+        state: quickProfile.state || 'Karnataka',
+        interests: ['education'],
+        income: 0,
+        caste_group: 'General',
+        gender: 'other',
+        previous_applications: []
+      };
+      try {
+        const genericRaw = await mlService.getRecommendations(genericProfile, Math.max(top_k, 10), { timeoutMs: 6000 });
+        const genericFiltered = applyEligibilityFilter(genericRaw, genericProfile);
+        const genericRecs = (genericFiltered && genericFiltered.length > 0 ? genericFiltered : genericRaw) || [];
+        recommendations = genericRecs.slice(0, top_k);
+      } catch (_) {
+        // ignore; we'll return whatever we have (possibly empty)
+      }
+    }
 
     res.json({
       message: 'Quick recommendations generated successfully',
       recommendations: recommendations || [],
       profile: quickProfile,
-      totalRecommendations: recommendations?.length || 0
+      totalRecommendations: recommendations?.length || 0,
+      availableRecommendations: filteredRecommendations.length
     });
 
   } catch (error) {
@@ -245,6 +299,13 @@ function applyEligibilityFilter(recommendations, profile) {
 
   for (const rec of recommendations) {
     const eligibilityText = String(rec.eligibility || rec.Eligibility || '').toLowerCase();
+    const combinedText = [
+      eligibilityText,
+      String(rec.details || '').toLowerCase(),
+      String(rec.scheme_name || '').toLowerCase(),
+      String(rec.tags || '').toLowerCase(),
+      String(rec.schemeCategory || '').toLowerCase()
+    ].join(' ');
 
     // If no eligibility text, allow but do not alter.
     if (!eligibilityText || eligibilityText.trim().length < 5) {
@@ -314,11 +375,38 @@ function applyEligibilityFilter(recommendations, profile) {
     // 3) Gender constraints
     const mentionsWomenOnly = /(women only|only for women|girls only|only for girls|female candidates only)/.test(eligibilityText);
     const mentionsMenOnly = /(men only|only for men|boys only|only for boys|male candidates only)/.test(eligibilityText);
+    const mentionsTransgender = /\btransgender(s)?\b|\bthird gender\b|\btrans[-\s]?person\b/.test(combinedText);
+    const userIsTrans = /\btrans|non[-\s]?binary|genderqueer|third gender\b/.test(user.gender);
+
+    // Girl child specific
+    const mentionsGirlChild = /\bgirl\s*child\b|\bonly for girls\b|\bgirls only\b/.test(combinedText);
+    // Boy specific (rare, but handle)
+    const mentionsBoyChild = /\bboy\s*child\b|\bonly for boys\b|\bboys only\b/.test(combinedText);
+    // Pregnancy/maternity/lactating
+    const mentionsMaternity = /\bpregnan(t|cy)\b|\bmaternity\b|\blactating\b|\banganwadi\s*helper\b/.test(combinedText);
+    // Widow/single woman oriented
+    const mentionsWomenExclusive = /\b(unmarried woman|widow|married women|self help group women|girl\s*child)\b/.test(combinedText);
+
+    if (mentionsTransgender && !userIsTrans) {
+      continue;
+    }
     if (mentionsWomenOnly && user.gender && !user.gender.includes('female')) {
       continue;
     }
     if (mentionsMenOnly && user.gender && !user.gender.includes('male')) {
       continue;
+    }
+    if (mentionsGirlChild) {
+      // Must be female and plausibly a child/teen
+      if (!user.gender.includes('female')) continue;
+      if (user.age && user.age > 18) continue;
+    }
+    if (mentionsBoyChild) {
+      if (!user.gender.includes('male')) continue;
+      if (user.age && user.age > 18) continue;
+    }
+    if (mentionsMaternity || mentionsWomenExclusive) {
+      if (!user.gender.includes('female')) continue;
     }
 
     // 4) Age constraints (simple)
@@ -340,6 +428,31 @@ function applyEligibilityFilter(recommendations, profile) {
     if (maxAge && user.age) {
       const val = parseInt(maxAge[2], 10);
       if (!Number.isNaN(val) && user.age > val) continue;
+    }
+
+    // 5) Education status heuristics based on age and phrases
+    // If scheme is for school students or specific classes, enforce plausible age window
+    const mentionsSpecificClass = /(class|std\.?|standard)\s*(ix|x|xi|xii|9|10|11|12)\b/.test(combinedText);
+    const mentionsSchoolStudent = /\bschool\s+student\b|\bpre-?matric\b|\bsecondary school\b|\bsenior secondary\b|\bhigher secondary\b/.test(combinedText);
+    const mentionsCollegeStudent = /\bcollege\s+student\b|\bundergraduate\b|\bpost-?matric\b|\bdegree\b|\bpursuing (b\.|bcom|bsc|ba|btech|be|b\.tech|b\.e)\b/.test(combinedText);
+    const mentionsCurrentlyStudying = /\b(currently|presently)\s+(studying|pursuing|enrolled)\b/.test(combinedText);
+
+    if (user.age) {
+      // School window ~10-20
+      if ((mentionsSpecificClass || mentionsSchoolStudent) && (user.age < 10 || user.age > 20)) {
+        continue;
+      }
+      // College window ~16-30
+      if (mentionsCollegeStudent && (user.age < 16 || user.age > 30)) {
+        continue;
+      }
+      // Generic "currently studying" with school/college hints
+      if (mentionsCurrentlyStudying && (mentionsSpecificClass || mentionsSchoolStudent) && (user.age < 10 || user.age > 22)) {
+        continue;
+      }
+      if (mentionsCurrentlyStudying && mentionsCollegeStudent && (user.age < 16 || user.age > 32)) {
+        continue;
+      }
     }
 
     filtered.push(rec);

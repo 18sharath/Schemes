@@ -13,9 +13,10 @@ class MLService {
    * @param {number} topK - Number of recommendations to return
    * @returns {Promise<Array>} Array of recommended schemes
    */
-  async getRecommendations(profile, topK = 10) {
+  async getRecommendations(profile, topK = 10, options = {}) {
     return new Promise((resolve, reject) => {
       try {
+        const { timeoutMs } = options;
         // Prepare the profile data for the ML model
         const profileData = {
           age: profile.age,
@@ -41,6 +42,14 @@ class MLService {
 
         let stdout = '';
         let stderr = '';
+        let killedByTimeout = false;
+        let timer;
+        if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+          timer = setTimeout(() => {
+            killedByTimeout = true;
+            try { pythonProcess.kill('SIGKILL'); } catch (_) {}
+          }, timeoutMs);
+        }
 
         pythonProcess.stdout.on('data', (data) => {
           stdout += data.toString();
@@ -51,6 +60,10 @@ class MLService {
         });
 
         pythonProcess.on('close', (code) => {
+          if (timer) clearTimeout(timer);
+          if (killedByTimeout) {
+            return reject(new Error('ML inference timed out'));
+          }
           if (code !== 0) {
             console.error('Python process error:', stderr);
             reject(new Error(`ML inference failed with code ${code}: ${stderr}`));
@@ -67,6 +80,7 @@ class MLService {
         });
 
         pythonProcess.on('error', (error) => {
+          if (timer) clearTimeout(timer);
           console.error('Failed to start Python process:', error);
           reject(new Error('Failed to start ML inference process'));
         });

@@ -70,9 +70,10 @@ select option:disabled {
 
 /* Utility classes */
 .container {
-  max-width: 1200px;
+  max-width: 100% !important;
   margin: 0 auto;
-  padding: 0 1rem;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
 .btn {
@@ -258,7 +259,8 @@ select option:disabled {
 /* Responsive design */
 @media (max-width: 768px) {
   .container {
-    padding: 0 0.5rem;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
   }
   
   .btn {

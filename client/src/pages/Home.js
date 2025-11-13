@@ -34,13 +34,6 @@ const Home = () => {
     }
   ];
 
-  const stats = [
-    { number: '1000+', label: 'Government Schemes' },
-    { number: '50+', label: 'States Covered' },
-    { number: '10K+', label: 'Users Helped' },
-    { number: '95%', label: 'Success Rate' }
-  ];
-
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -118,33 +111,6 @@ const Home = () => {
                 <p className="text-gray-600 dark:text-gray-400">
                   {feature.description}
                 </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Stats Section */}
-      <section className="py-20 bg-gray-50 dark:bg-gray-950 transition-colors">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-800 dark:text-gray-100 mb-4">
-              Trusted by Thousands
-            </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-400">
-              Join our growing community of users who have found their perfect schemes.
-            </p>
-          </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {stats.map((stat, index) => (
-              <div key={index} className="text-center">
-                <div className="text-4xl md:text-5xl font-bold text-blue-600 dark:text-indigo-300 mb-2">
-                  {stat.number}
-                </div>
-                <div className="text-gray-600 dark:text-gray-400 font-medium">
-                  {stat.label}
-                </div>
               </div>
             ))}
           </div>

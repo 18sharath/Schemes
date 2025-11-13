@@ -216,15 +216,41 @@ class SchemeRecommender:
 			if "age" in text:
 				add(True, 0.3)
 
-		# Gender - More flexible matching
+		# Gender - More flexible matching with mismatch penalties
+		gender_mismatch_penalty = 0.0
+		g_lower = ""
 		if profile.gender:
-			g = profile.gender.lower()
-			add((g.startswith("f") and ("female" in text or "women" in text or "woman" in text or "ladies" in text)), 1.2)
-			add((g.startswith("m") and ("male" in text or "men" in text or "man" in text)), 0.8)
-			add(("transgender" in text and "trans" in g), 1.0)
+			g_lower = profile.gender.lower()
+			add((g_lower.startswith("f") and ("female" in text or "women" in text or "woman" in text or "ladies" in text)), 1.2)
+			add((g_lower.startswith("m") and ("male" in text or "men" in text or "man" in text)), 0.8)
+			add(("transgender" in text and "trans" in g_lower), 1.0)
 			# General gender-neutral schemes get partial credit
 			if not any(x in text for x in ["female", "women", "male", "men", "gender"]):
 				add(True, 0.2)
+
+		gender_text = text
+		mentions_women = any(kw in gender_text for kw in ["women", "woman", "female", "girl"])
+		mentions_men = any(kw in gender_text for kw in ["men", "man", "male", "boy"])
+		mentions_trans = any(kw in gender_text for kw in ["transgender", "third gender", "trans gender", "trans person", "trans-"])
+		def _gender_matches(expected: str) -> bool:
+			if expected == "female":
+				return bool(g_lower) and (g_lower.startswith("f") or "women" in g_lower or "female" in g_lower)
+			if expected == "male":
+				return bool(g_lower) and (g_lower.startswith("m") or "male" in g_lower or "man" in g_lower)
+			if expected == "trans":
+				return bool(g_lower) and any(tag in g_lower for tag in ["trans", "non-binary", "nonbinary", "genderqueer", "third gender"])
+			return False
+
+		female_match = _gender_matches("female")
+		male_match = _gender_matches("male")
+		trans_match = _gender_matches("trans")
+
+		if mentions_trans and not trans_match:
+			gender_mismatch_penalty = max(gender_mismatch_penalty, 0.7)
+		if mentions_women and not mentions_men and not female_match:
+			gender_mismatch_penalty = max(gender_mismatch_penalty, 0.6)
+		if mentions_men and not mentions_women and not male_match:
+			gender_mismatch_penalty = max(gender_mismatch_penalty, 0.5)
 
 		# Income - More flexible income matching
 		if profile.income is not None:
@@ -320,6 +346,9 @@ class SchemeRecommender:
 		match_boost = min(0.2, matches * 0.05)  # Up to 20% boost for multiple matches
 		final_score = min(1.0, baseline + weighted_score * 0.7 + match_boost)
 		
+		if gender_mismatch_penalty:
+			final_score = max(0.0, final_score - gender_mismatch_penalty)
+
 		return final_score
 
 	def recommend(
@@ -332,30 +361,35 @@ class SchemeRecommender:
 	) -> pd.DataFrame:
 		assert self.scheme_df is not None and self.tfidf_matrix is not None
 
-		# --- 🔹 NEW: filter by state (keep central + user's state) ---
-		df = self.scheme_df.copy()
+		base_df = self.scheme_df.copy()
 		if profile.state:
 			st = profile.state.lower().strip()
-			# start with central-level schemes
-			mask = df.get("level", "").astype(str).str.lower().str.contains("central", na=False)
+			mask = pd.Series(False, index=base_df.index, dtype=bool)
 
-			# keep if there is an explicit 'state' or 'states' column that matches
-			if "state" in df.columns:
-				mask |= df["state"].astype(str).str.lower().str.contains(st, na=False)
-			if "states" in df.columns:
-				mask |= df["states"].astype(str).str.lower().str.contains(st, na=False)
+			if "level" in base_df.columns:
+				mask |= base_df["level"].astype(str).str.lower().str.contains("central", na=False)
 
-			# also search for state name inside key text columns (details, eligibility, tags, name)
+			if "state" in base_df.columns:
+				mask |= base_df["state"].astype(str).str.lower().str.contains(st, na=False)
+			if "states" in base_df.columns:
+				mask |= base_df["states"].astype(str).str.lower().str.contains(st, na=False)
+
 			text_cols = ["details", "eligibility", "tags", "scheme_name", "schemeCategory"]
 			for c in text_cols:
-				if c in df.columns:
-					mask |= df[c].astype(str).str.lower().str.contains(st, na=False)
+				if c in base_df.columns:
+					mask |= base_df[c].astype(str).str.lower().str.contains(st, na=False)
 
-			df = df[mask].copy()
+			prioritized_df = base_df[mask].copy()
+			if prioritized_df.empty:
+				df = base_df
+			else:
+				remaining_df = base_df[~mask]
+				df = pd.concat([prioritized_df, remaining_df], axis=0)
+		else:
+			df = base_df
 
-			# fallback to full dataset if no matches (avoid empty results)
-			if df.empty:
-				df = self.scheme_df.copy()
+		max_candidates = min(len(df), max(top_k * 3, top_k + 10))
+		df = df.head(max_candidates)
 
 		# Build query vector from profile/interests with enhanced expansion
 		query_text = profile.to_query_text()

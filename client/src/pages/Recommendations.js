@@ -29,7 +29,6 @@ const Recommendations = () => {
   const location = useLocation();
   const [recommendations, setRecommendations] = useState([]);
   const [loadingPersonalized, setLoadingPersonalized] = useState(false);
-  const [loadingQuick, setLoadingQuick] = useState(false);
   const [serviceStatus, setServiceStatus] = useState(null);
   const [topK, setTopK] = useState(10);
   const [filteredRecommendations, setFilteredRecommendations] = useState([]);
@@ -221,41 +220,6 @@ const Recommendations = () => {
       setLoadingPersonalized(false);
     }
   };
-
-  const getQuickRecommendations = async () => {
-    setLoadingQuick(true);
-    try {
-      // Prepare quick recommendation data - optimized, only include defined values
-      const quickData = {};
-      if (user?.profile?.age) quickData.age = parseInt(user.profile.age);
-      if (user?.profile?.occupation) quickData.occupation = user.profile.occupation;
-      if (user?.profile?.state) quickData.state = user.profile.state;
-      if (Array.isArray(user?.profile?.interests) && user.profile.interests.length > 0) {
-        quickData.interests = user.profile.interests;
-      }
-
-      const response = await recommendationsAPI.getQuickRecommendations(quickData);
-      const newRecs = response.data.recommendations;
-      
-      if (!newRecs || newRecs.length === 0) {
-        toast.error('No recommendations found. Please try again with different criteria.');
-        return;
-      }
-      
-      setRecommendations(newRecs);
-      saveRecommendationsToStorage(newRecs);
-      toast.success(`Found ${newRecs.length} quick recommendations!`);
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || 
-                          error.response?.data?.errors?.[0]?.msg ||
-                          error.message ||
-                          'Failed to get quick recommendations. Please try again.';
-      toast.error(errorMessage);
-    } finally {
-      setLoadingQuick(false);
-    }
-  };
-
 
   const getScoreColor = (score) => {
     if (score >= 0.8) return 'text-green-600 bg-green-100';
@@ -627,7 +591,7 @@ const Recommendations = () => {
       )}
 
       {/* Action Buttons */}
-      <div className="grid md:grid-cols-3 gap-4 mb-8">
+      <div className="grid md:grid-cols-2 gap-4 mb-8">
         <div className="card p-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
           <h3 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">Personalized Recommendations</h3>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -652,27 +616,6 @@ const Recommendations = () => {
               Complete your profile for personalized recommendations
             </p>
           )}
-        </div>
-
-        <div className="card p-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-          <h3 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">Quick Recommendations</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Get instant recommendations with minimal profile information.
-          </p>
-          <button
-            onClick={getQuickRecommendations}
-            disabled={loadingQuick}
-            className="btn btn-secondary w-full"
-          >
-            {loadingQuick ? (
-              <div className="loading"></div>
-            ) : (
-              <>
-                <Clock className="w-4 h-4" />
-                Quick Search
-              </>
-            )}
-          </button>
         </div>
 
         <div className="card p-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
@@ -735,14 +678,14 @@ const Recommendations = () => {
       )}
 
       {/* Results */}
-      {(loadingPersonalized || loadingQuick) && (
+  {loadingPersonalized && (
         <div className="text-center py-12">
           <div className="loading mx-auto mb-4"></div>
           <p className="text-gray-600 dark:text-gray-300">Analyzing your profile and generating recommendations...</p>
         </div>
       )}
 
-      {!loadingPersonalized && !loadingQuick && filteredRecommendations.length > 0 && (
+      {!loadingPersonalized && filteredRecommendations.length > 0 && (
         <div className="space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">
@@ -930,7 +873,7 @@ const Recommendations = () => {
         </div>
       )}
 
-      {!loadingPersonalized && !loadingQuick && recommendations.length === 0 && (
+      {!loadingPersonalized && recommendations.length === 0 && (
         <div className="text-center py-12">
           <FileText className="w-16 h-16 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-800 dark:text-gray-200 mb-2">No Recommendations Yet</h3>
@@ -940,7 +883,7 @@ const Recommendations = () => {
         </div>
       )}
 
-      {!loadingPersonalized && !loadingQuick && recommendations.length > 0 && filteredRecommendations.length === 0 && (
+      {!loadingPersonalized && recommendations.length > 0 && filteredRecommendations.length === 0 && (
         <div className="text-center py-12">
           <Search className="w-16 h-16 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-800 dark:text-gray-200 mb-2">No Results Found</h3>

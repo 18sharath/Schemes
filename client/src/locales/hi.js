@@ -34,7 +34,7 @@ const hi = {
     register: 'रजिस्टर',
     logout: 'लॉगआउट',
     getStarted: 'शुरू करें',
-    appName: 'योजना सिफारिशकर्ता',
+    appName: 'स्कीम नेविगेटर',
   },
 
   // Home Page

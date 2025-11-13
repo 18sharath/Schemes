@@ -71,8 +71,6 @@ export const profileAPI = {
 export const recommendationsAPI = {
   getRecommendations: (topK = 10) => api.post('/recommendations', { top_k: topK }),
   
-  getQuickRecommendations: (profileData) => api.post('/recommendations/quick', profileData),
-  
   getServiceStatus: () => api.get('/recommendations/status'),
 };
 
